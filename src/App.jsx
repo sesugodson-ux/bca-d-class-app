@@ -301,18 +301,40 @@ export default function App(){
   }, []);
   const fetchCurrentDayOrder = useCallback(async function(){
     try{
-      const { data, error } = await supabase.from('app_settings').select('value').eq('key','current_day_order').limit(1);
+      const { data, error } = await supabase.from('app_settings').select('key,value').in('key',['current_day_order','last_updated_date']);
       if(error){ console.error(error); return; }
-      if(data && data.length>0){ setCurrentDayOrder(parseInt(data[0].value,10)||1); }
+
+      const settingsMap = {};
+      (data||[]).forEach(function(row){ if(row.key){ settingsMap[row.key] = row.value; } });
+
+      const storedOrder = parseInt(settingsMap.current_day_order,10) || 1;
+      const storedDate = settingsMap.last_updated_date || null;
+      const today = todayISO();
+      const todayDow = new Date().getDay();
+
+      if((!storedDate || storedDate < today) && todayDow !== 0){
+        const nextOrder = storedOrder >= 6 ? 1 : storedOrder + 1;
+        setCurrentDayOrder(nextOrder);
+        await supabase.from('app_settings').upsert({ key:'current_day_order', value:String(nextOrder) }, { onConflict:'key' });
+        await supabase.from('app_settings').upsert({ key:'last_updated_date', value:today }, { onConflict:'key' });
+      }else{
+        setCurrentDayOrder(storedOrder);
+      }
     }catch(e){ console.error(e); }
   }, []);
   async function saveCurrentDayOrder(dayOrder){
     try{
+      const today = todayISO();
       const { error } = await supabase.from('app_settings').upsert(
         { key:'current_day_order', value:String(dayOrder) },
         { onConflict: 'key' }
       );
       if(error){ showToast('Could not update Day Order', true); return; }
+      const { error: dateError } = await supabase.from('app_settings').upsert(
+        { key:'last_updated_date', value:today },
+        { onConflict: 'key' }
+      );
+      if(dateError){ showToast('Could not update Day Order', true); return; }
       setCurrentDayOrder(dayOrder); showToast('Day Order updated');
     }catch(e){ showToast('Could not update Day Order', true); }
   }
