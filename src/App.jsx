@@ -308,7 +308,10 @@ export default function App(){
   }, []);
   async function saveCurrentDayOrder(dayOrder){
     try{
-      const { error } = await supabase.from('app_settings').upsert({ key:'current_day_order', value:String(dayOrder) });
+      const { error } = await supabase.from('app_settings').upsert(
+        { key:'current_day_order', value:String(dayOrder) },
+        { onConflict: 'key' }
+      );
       if(error){ showToast('Could not update Day Order', true); return; }
       setCurrentDayOrder(dayOrder); showToast('Day Order updated');
     }catch(e){ showToast('Could not update Day Order', true); }
