@@ -427,14 +427,19 @@ export default function App(){
   const summary = useMemo(function(){
     const absentList = activeStudents
       .filter(function(s){ return rollState[s.id]==='absent'; })
-      .sort(function(a,b){ 
-        return String(a.rollNo).localeCompare(String(b.rollNo), undefined, { numeric: true }); 
+      .sort(function(a, b){
+        // Strict mathematical subtraction for flawless numeric sorting
+        const numA = parseInt(String(a.rollNo).trim(), 10) || 0;
+        const numB = parseInt(String(b.rollNo).trim(), 10) || 0;
+        return numA - numB;
       });
+      
     const totalEnrolled = studentDb.length;
     const totalLeft = leftIds.length;
     const totalActive = activeStudents.length;
     const totalAbsent = absentList.length;
     const totalPresent = totalActive - totalAbsent;
+    
     return { absentList, totalEnrolled, totalLeft, totalActive, totalAbsent, totalPresent };
   }, [activeStudents, rollState, studentDb, leftIds]);
 
