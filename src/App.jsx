@@ -425,8 +425,11 @@ export default function App(){
   }, [studentDb]);
 
   const summary = useMemo(function(){
-    const absentList = activeStudents.filter(function(s){ return rollState[s.id]==='absent'; })
-      .sort(function(a,b){ return a.id.localeCompare(b.id); });
+    const absentList = activeStudents
+      .filter(function(s){ return rollState[s.id]==='absent'; })
+      .sort(function(a,b){ 
+        return String(a.rollNo).localeCompare(String(b.rollNo), undefined, { numeric: true }); 
+      });
     const totalEnrolled = studentDb.length;
     const totalLeft = leftIds.length;
     const totalActive = activeStudents.length;
