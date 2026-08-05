@@ -71,6 +71,56 @@ function numericRollCompare(a, b){
   return safeA - safeB;
 }
 
+/* Normalizes a roll number for comparison purposes: trims whitespace,
+   strips any internal spaces, and lower-cases it. This lets login /
+   lookup logic match roll numbers even if they carry stray whitespace
+   or inconsistent casing coming from Supabase vs. user input. */
+function normalizeRollNo(val){
+  return String(val==null?'':val).trim().replace(/\s+/g,'').toLowerCase();
+}
+
+/* Normalizes a Date-of-Birth value (in almost any common shape) down to a
+   canonical YYYY-MM-DD string so that values coming back from Supabase
+   (which is often an ISO date like "2007-07-08" or a timestamp like
+   "2007-07-08T00:00:00.000Z") can be safely compared against what the
+   user types into the DD-MM-YYYY masked input field. Returns '' if the
+   value can't be confidently parsed, so unrelated strings never falsely
+   match each other. */
+function normalizeDobToISO(val){
+  if(!val) return '';
+  const s = String(val).trim();
+  if(!s) return '';
+
+  // ISO date or timestamp: YYYY-MM-DD(...)
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return m[1]+'-'+m[2]+'-'+m[3];
+
+  // DD-MM-YYYY or DD/MM/YYYY (the format used throughout this app's UI)
+  m = s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
+  if(m) return m[3]+'-'+m[2]+'-'+m[1];
+
+  // DD-MM-YY or DD/MM/YY (2-digit year fallback)
+  m = s.match(/^(\d{2})[-/](\d{2})[-/](\d{2})$/);
+  if(m){
+    const yy = parseInt(m[3],10);
+    const yyyy = yy <= 30 ? 2000+yy : 1900+yy; // reasonable pivot for student DOBs
+    return yyyy+'-'+m[2]+'-'+m[1];
+  }
+
+  return '';
+}
+
+/* True if two roll number / DOB pairs represent the same person, matching
+   flexibly regardless of formatting differences between what's stored in
+   Supabase and what the user typed. */
+function credentialsMatch(storedRoll, storedDob, inputRoll, inputDob){
+  const rollOk = normalizeRollNo(storedRoll) === normalizeRollNo(inputRoll) && normalizeRollNo(inputRoll) !== '';
+  const dobA = normalizeDobToISO(storedDob);
+  const dobB = normalizeDobToISO(inputDob);
+  const dobOk = dobA !== '' && dobB !== '' && dobA === dobB;
+  return rollOk && dobOk;
+}
+
 const STUDY_TABLE = 'study_materials';
 const STUDY_BUCKET = 'materials';
 
@@ -139,17 +189,29 @@ export default function App(){
         return;
       }
 
-      // Correct DB column mapping: student_name -> name, roll_number -> rollNo
+      // Robust column mapping: tries every reasonable snake_case / camelCase
+      // variant that Supabase might return, trims strings, and never leaves
+      // a field silently blank just because one particular alias was empty.
+      function pick(row, keys){
+        for(let i=0;i<keys.length;i++){
+          const v = row[keys[i]];
+          if(v!==undefined && v!==null && String(v).trim()!==''){
+            return String(v).trim();
+          }
+        }
+        return '';
+      }
+
       const mapped = (data || []).map(function(row) {
         return {
           id: String(row.id),
-          rollNo: String(row.roll_number || row.roll_no || row.rollNo || '').trim(),
-          name: row.student_name || row.name || '',
-          studentMob: row.student_mob || row.studentMob || '',
-          fatherMob: row.father_mob || row.fatherMob || '',
-          collegeID: row.college_id || row.collegeID || '',
-          partOne: row.part_one || row.partOne || '',
-          dob: row.dob || ''
+          rollNo: pick(row, ['roll_number','roll_no','rollNo','rollno']),
+          name: pick(row, ['student_name','name','full_name','studentName']),
+          studentMob: pick(row, ['student_mob','student_mobile','studentMob','student_phone','mobile']),
+          fatherMob: pick(row, ['father_mob','father_mobile','fatherMob','father_phone','parent_mob']),
+          collegeID: pick(row, ['college_id','college_email','collegeID','college_mail','email']),
+          partOne: pick(row, ['part_one','part_one_language','partOne','language']),
+          dob: pick(row, ['dob','date_of_birth','dateOfBirth'])
         };
       });
 
@@ -239,11 +301,17 @@ export default function App(){
       await fetchAdmins(); return true;
     }catch(e){ showToast('Could not remove admin', true); return false; }
   }
+  /* Verifies Admin Roll Number + DOB. Fetches the (small) admins table and
+     compares flexibly with credentialsMatch() rather than relying on a
+     strict server-side .eq() match, so formatting differences (whitespace,
+     ISO vs DD-MM-YYYY dates) don't produce false "invalid" results. */
   async function verifyAdmin(rollNo, dob){
     try{
-      const { data, error } = await supabase.from('admins').select().eq('rollNo', rollNo).eq('dob', dob).limit(1);
+      const { data, error } = await supabase.from('admins').select('rollNo,dob');
       if(error){ console.error(error); return false; }
-      return data && data.length>0;
+      return (data||[]).some(function(a){
+        return credentialsMatch(a.rollNo, a.dob, rollNo, dob);
+      });
     }catch(e){ console.error(e); return false; }
   }
 
@@ -556,33 +624,15 @@ export default function App(){
     if(!ok) showToast('Please select a date, hour, and subject first', true);
     return ok;
   }
-  function handleSend(){
-    if(!validateBeforeSend()){ triggerShake('sendBtn'); return; }
-    window.open('https://wa.me/?text='+encodeURIComponent(buildRawMessage()), '_blank');
-    showToast('Opening WhatsApp…');
-  }
-  function fallbackCopy(text){
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position='fixed'; ta.style.left='-9999px';
-    document.body.appendChild(ta); ta.select();
-    try{ document.execCommand('copy'); showToast('Message Copied!'); }
-    catch(e){ showToast('Copy failed — please copy manually', true); }
-    document.body.removeChild(ta);
-  }
-  function handleCopy(){
-    if(!validateBeforeSend()){ triggerShake('copyBtn'); return; }
-    const text = buildRawMessage();
-    if(navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(text).then(function(){ showToast('Message Copied!'); }).catch(function(){ fallbackCopy(text); });
-    } else { fallbackCopy(text); }
-  }
 
   /* Saves (or merges) attendance for the selected hour into the date-wise
      history record. If a record already exists for dateVal, only that hour's
      slot in the "hours" JSON is overwritten — the other hours already saved
-     for that date are preserved. Uses upsert on the unique "date" column. */
-  async function handleSaveHistory(){
-    if(!validateBeforeSend()){ triggerShake('saveHistoryBtn'); return; }
+     for that date are preserved. Uses upsert on the unique "date" column.
+     Returns true/false so callers (e.g. the WhatsApp send handler) know
+     whether the save actually succeeded. Does not show its own toast on
+     success — the caller decides how to report the combined outcome. */
+  async function saveAttendanceToHistory(){
     const hourKey = String(hourVal);
     const absentRolls = summary.absentList.map(function(s){ return s.rollNo; });
 
@@ -593,7 +643,7 @@ export default function App(){
         .eq('date', dateVal)
         .limit(1);
 
-      if(fetchError){ console.error(fetchError); showToast('Could not save to history', true); return; }
+      if(fetchError){ console.error(fetchError); showToast('Could not save to history', true); return false; }
 
       const existingRow = existing && existing.length > 0 ? existing[0] : null;
 
@@ -618,14 +668,40 @@ export default function App(){
         .from('attendance_history')
         .upsert(record, { onConflict: 'date' });
 
-      if(upsertError){ console.error(upsertError); showToast('Could not save to history', true); return; }
+      if(upsertError){ console.error(upsertError); showToast('Could not save to history', true); return false; }
 
-      showToast(existingRow ? 'Hour '+hourVal+' merged into '+formatNiceDate(dateVal) : 'Saved to history');
       fetchHistory();
+      return true;
     }catch(e){
       console.error(e);
       showToast('Could not save to history', true);
+      return false;
     }
+  }
+
+  /* Send to Parents Group via WhatsApp: now auto-saves the attendance record
+     to Supabase history first, then opens the WhatsApp share intent — there
+     is no separate "Save to History" step for the admin to remember. */
+  async function handleSend(){
+    if(!validateBeforeSend()){ triggerShake('sendBtn'); return; }
+    const saved = await saveAttendanceToHistory();
+    window.open('https://wa.me/?text='+encodeURIComponent(buildRawMessage()), '_blank');
+    showToast(saved ? 'Saved to history — opening WhatsApp…' : 'Opening WhatsApp… (history save failed)', !saved);
+  }
+  function fallbackCopy(text){
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.left='-9999px';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); showToast('Message Copied!'); }
+    catch(e){ showToast('Copy failed — please copy manually', true); }
+    document.body.removeChild(ta);
+  }
+  function handleCopy(){
+    if(!validateBeforeSend()){ triggerShake('copyBtn'); return; }
+    const text = buildRawMessage();
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ showToast('Message Copied!'); }).catch(function(){ fallbackCopy(text); });
+    } else { fallbackCopy(text); }
   }
 
   /* ================= STUDENT DATABASE ================= */
@@ -690,6 +766,16 @@ export default function App(){
     navTo('semesterLogin');
   }
 
+  /* Looks up a student by Roll Number + DOB against the already-loaded
+     studentDb, using credentialsMatch() for flexible/robust comparison
+     (handles whitespace, case, and DOB format differences between what's
+     stored in Supabase and what the student types in). */
+  function findStudentByCredentials(rollNo, dob){
+    return studentDb.find(function(s){
+      return s.name!=='XX' && credentialsMatch(s.rollNo, s.dob, rollNo, dob);
+    });
+  }
+
   async function attemptStudyLogin(){
     const rollNo = studyLoginRoll.trim(), dob = studyLoginDob.trim();
     if(!rollNo){ triggerShake('studyRoll'); showToast('Enter your Roll Number', true); return; }
@@ -702,7 +788,10 @@ export default function App(){
         setCurrentStudyRollNo(rollNo);
         setCurrentStudyIsAdmin(true);
       } else {
-        const student = studentDb.find(function(s){ return s.name!=='XX' && s.rollNo.trim()===rollNo && s.dob===dob; });
+        // Ensure we have the latest student roster before matching, in case
+        // this is the first login attempt right after the app booted.
+        if(studentDb.length===0){ await fetchStudents(); }
+        const student = findStudentByCredentials(rollNo, dob);
         if(!student){ triggerShake('studyLoginCard'); showToast('Invalid Roll Number or Date of Birth', true); setStudyLoginBusy(false); return; }
         setCurrentStudyRollNo(student.rollNo);
         setCurrentStudyIsAdmin(false);
@@ -729,7 +818,8 @@ export default function App(){
         await fetchSemesterResults(rollNo);
         navTo('semesterResults');
       } else {
-        const student = studentDb.find(function(s){ return s.name!=='XX' && s.rollNo.trim()===rollNo && s.dob===dob; });
+        if(studentDb.length===0){ await fetchStudents(); }
+        const student = findStudentByCredentials(rollNo, dob);
         if(!student){ triggerShake('semLoginCard'); showToast('Invalid Roll Number or Date of Birth', true); setStudyLoginBusy(false); return; }
         setCurrentStudyRollNo(student.rollNo);
         setCurrentStudyIsAdmin(false);
@@ -954,7 +1044,7 @@ export default function App(){
     const q = studentSearchQuery.toLowerCase().trim();
     if(!q) return studentDb;
     return studentDb.filter(function(s){
-      return s.name.toLowerCase().indexOf(q)!==-1 || s.rollNo.indexOf(q)!==-1 || s.id.indexOf(q)!==-1;
+      return s.name.toLowerCase().indexOf(q)!==-1 || s.rollNo.indexOf(q)!==-1;
     });
   }, [studentDb, studentSearchQuery]);
 
@@ -1291,10 +1381,6 @@ export default function App(){
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
                 Copy to Clipboard
               </button>
-              <button type="button" className={"btn btn-secondary"+shakeCls('saveHistoryBtn')} onClick={handleSaveHistory}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
-                Save to History
-              </button>
             </div>
             <p className="app-footer">BCA App</p>
           </section>
@@ -1349,7 +1435,7 @@ export default function App(){
                     <div className="src-head">
                       <div>
                         <div className="src-name">{s.name}</div>
-                        <div className="src-roll">Roll No {s.rollNo} · #{s.id}{pct!=null ? ' · '+pct+'% attendance' : ''}</div>
+                        <div className="src-roll">Roll No {s.rollNo}{pct!=null ? ' · '+pct+'% attendance' : ''}</div>
                       </div>
                       <div style={{display:'flex',gap:8,alignItems:'center'}}>
                         {left && <span className="left-badge">Left</span>}
@@ -1750,7 +1836,6 @@ export default function App(){
                   const left = leftIds.indexOf(s.id)!==-1;
                   return (
                     <div key={s.id} className={"student-row"+(left?' left-status':'')}>
-                      <span className="student-row-id">{s.id}</span>
                       <div className="student-row-info">
                         <div className="student-row-name">{s.name==='XX' ? '[No Data] '+s.rollNo : s.name}</div>
                         <div className="student-row-roll">{s.rollNo}</div>
@@ -1794,7 +1879,7 @@ export default function App(){
               </div>
               <p className="helper-text" style={{marginTop:0}}>Each entry below groups all 5 hours saved for that date. Tap a date to see the hour-wise absentee breakdown.</p>
               <div className="manage-list">
-                {history.length===0 && <div className="empty-state">No saved reports yet — use "Save to History" in Attendance Report.</div>}
+                {history.length===0 && <div className="empty-state">No saved reports yet — send an Attendance Report via WhatsApp to create one.</div>}
                 {history.map(function(entry){
                   const isOpen = expandedHistoryId === entry.id;
                   const hoursMap = normalizeHoursMap(entry);
@@ -1924,9 +2009,11 @@ function DetailItem(props){
     <div className="src-detail-item">
       <div className="src-detail-label">{props.label}</div>
       <div className="src-detail-value">
-        {props.tel ? <a href={'tel:'+props.value}>{props.value}</a>
-          : props.mail ? <a href={'mailto:'+props.value}>{props.value}</a>
-          : props.value}
+        {props.value
+          ? (props.tel ? <a href={'tel:'+props.value}>{props.value}</a>
+             : props.mail ? <a href={'mailto:'+props.value}>{props.value}</a>
+             : props.value)
+          : <span className="src-detail-empty">—</span>}
       </div>
     </div>
   );
