@@ -496,6 +496,29 @@ export default function App(){
     return lines.join('\n');
   }
 
+  function buildHourHistoryMessage(entry, hour){
+    const niceDate = formatNiceDate(entry.date);
+    const hourRow = entry.rows.find(function(r){ return r.hour === hour; });
+    const absentees = hourRow ? (hourRow.absent_rolls || []).slice() : [];
+    const lines = [];
+    lines.push('Class: '+(entry.class_name||className));
+    lines.push('----------------------------------------');
+    lines.push('📅 Date: '+niceDate);
+    lines.push('🕒 Hour '+hour+(hourRow && hourRow.subject_name ? ' — '+hourRow.subject_name : ''));
+    lines.push('----------------------------------------');
+    if(!hourRow || absentees.length===0){
+      lines.push('✅ No absentees recorded for this hour.');
+    } else {
+      lines.push('Absent Students List:');
+      absentees.forEach(function(rollNo, idx){
+        const student = studentDb.find(function(s){ return s.rollNo === rollNo; });
+        lines.push(String(idx+1).padStart(2,'0')+'. '+rollNo+' - '+(student ? student.name : rollNo));
+      });
+    }
+    lines.push('----------------------------------------');
+    return lines.join('\n');
+  }
+
   /* Attendance % now simply treats every saved row as one conducted hour. */
   function getAttendancePercent(rollNo){
     if(history.length===0) return null;
@@ -1345,10 +1368,83 @@ export default function App(){
       showToast('Report deleted'); fetchHistory();
     }catch(e){ showToast('Could not delete report', true); }
   }
+
+  /* Deletes only one hour-row for a given date. */
+  async function handleDeleteHistoryHourEntry(dateStr, hour){
+    try{
+      const { error } = await supabase
+        .from('attendance_history')
+        .delete()
+        .eq('date', dateStr)
+        .eq('hour', hour);
+
+      if(error){ showToast('Could not delete hour record', true); return; }
+      showToast('Hour record deleted');
+      fetchHistory();
+    }catch(e){ showToast('Could not delete hour record', true); }
+  }
   function handleCopyHistoryMessage(text){
     if(navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(text).then(function(){ showToast('Message Copied!'); }).catch(function(){ fallbackCopy(text); });
     } else { fallbackCopy(text); }
+  }
+
+  function handleExportHourPdf(entry, hour){
+    const hourRow = entry.rows.find(function(r){ return r.hour === hour; });
+    if(!hourRow){ showToast('No data recorded for this hour', true); return; }
+
+    const absentRolls = (hourRow.absent_rolls || []).slice();
+    const rowsHtml = absentRolls.length===0
+      ? '<tr><td colspan="2" style="text-align:center;color:#666;padding:12px;">No absentees recorded for this hour.</td></tr>'
+      : absentRolls.map(function(rollNo){
+          const student = studentDb.find(function(s){ return s.rollNo === rollNo; });
+          return (
+            '<tr>'
+            + '<td class="num">'+escapeHtml(rollNo)+'</td>'
+            + '<td>'+escapeHtml(student ? student.name : rollNo)+'</td>'
+            + '</tr>'
+          );
+        }).join('');
+
+    const generatedOn = new Date().toLocaleString('en-IN',{ dateStyle:'medium', timeStyle:'short' });
+    const HOUR_PRINT_STYLE = '*{box-sizing:border-box;}'
+      + 'body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#2c3e50;margin:24px;background:#fff;}'
+      + '.header{text-align:center;margin-bottom:20px;border-bottom:2px solid #e2e8f0;padding-bottom:12px;}'
+      + '.college-name{font-size:20px;font-weight:800;color:#1e3a8a;margin:0 0 4px;text-transform:uppercase;letter-spacing:0.5px;}'
+      + '.dept-name{font-size:13px;font-weight:600;color:#0f766e;margin:0 0 4px;}'
+      + '.report-title{font-size:14px;font-weight:700;color:#475569;margin:0;}'
+      + '.meta{font-size:11px;color:#64748b;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}'
+      + 'table{width:100%;border-collapse:separate;border-spacing:0;font-size:11.5px;margin-bottom:12px;border-radius:8px;overflow:hidden;border:1px solid #cbd5e1;}'
+      + 'th,td{padding:7px 10px;text-align:left;border-bottom:1px solid #e2e8f0;border-right:1px solid #e2e8f0;}'
+      + 'th:last-child,td:last-child{border-right:none;}'
+      + 'tbody tr:last-child td{border-bottom:none;}'
+      + 'th{background:#f8fafc;color:#334155;font-weight:700;}'
+      + 'td.num{text-align:center;}'
+      + '.pill{display:inline-block;padding:2px 8px;border-radius:12px;font-weight:700;font-size:10.5px;}'
+      + '.pill-present{background:#dcfce7;color:#15803d;}'
+      + '.pill-absent{background:#fee2e2;color:#b91c1c;}'
+      + '.pill-partial{background:#fef9c3;color:#a16207;}'
+      + 'tbody tr:nth-child(even){background:#fafafa;}'
+      + '.footer{position:fixed;bottom:8mm;left:0;right:0;text-align:center;font-size:7.5px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:4px;}'
+      + '@media print{body{margin:10mm;}}';
+
+    const printHtml = '<!DOCTYPE html><html><head><meta charset="utf-8" />'
+      + '<title>Hour Attendance Report — Hour '+hour+'</title>'
+      + '<style>'+HOUR_PRINT_STYLE+'</style></head><body>'
+      + '<div class="header">'
+      + '<div class="college-name">Bishop Heber College</div>'
+      + '<div class="dept-name">Department of Computer Applications (BCA)</div>'
+      + '<div class="report-title">Attendance Report — Hour '+hour+'</div>'
+      + '</div>'
+      + '<div class="meta"><span>Class: <b>'+escapeHtml(entry.class_name||className)+'</b></span><span>Date: '+escapeHtml(formatNiceDate(entry.date))+'</span><span>Generated: '+escapeHtml(generatedOn)+'</span></div>'
+      + '<table><thead><tr><th>Roll No</th><th>Student Name</th></tr></thead>'
+      + '<tbody>'+rowsHtml+'</tbody></table>'
+      + '<div class="footer">BCA Class Portal Record · Student-managed internal utility report. May contain minor discrepancies compared to official college portals.</div>'
+      + '</body></html>';
+
+    if(openPrintWindow(printHtml)){
+      showToast('Opening print dialog — choose "Save as PDF"');
+    }
   }
 
   /* ---------- edit student modal ---------- */
@@ -2122,9 +2218,9 @@ export default function App(){
                                     </div>
                                     {hb.hasData && (
                                       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                                        <button type="button" onClick={function(e){ e.stopPropagation(); handleCopyHistoryMessage(buildHistoryMessage(dateEntry)); }}>Copy Message</button>
-                                        <button type="button" className="danger" onClick={function(e){ e.stopPropagation(); handleDeleteHistoryEntry(dateEntry.date); }}>Delete</button>
-                                        <button type="button" onClick={function(e){ e.stopPropagation(); handleExportPdf(); }}>Export PDF</button>
+                                        <button type="button" onClick={function(e){ e.stopPropagation(); handleCopyHistoryMessage(buildHourHistoryMessage(dateEntry, hb.hour)); }}>Copy Message</button>
+                                        <button type="button" className="danger" onClick={function(e){ e.stopPropagation(); handleDeleteHistoryHourEntry(dateEntry.date, hb.hour); }}>Delete</button>
+                                        <button type="button" onClick={function(e){ e.stopPropagation(); handleExportHourPdf(dateEntry, hb.hour); }}>Export PDF</button>
                                       </div>
                                     )}
                                   </div>
