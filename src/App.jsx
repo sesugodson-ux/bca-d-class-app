@@ -1241,7 +1241,7 @@ export default function App(){
     const pct = getAttendancePercent(student.rollNo);
 
     const rowsHtml = rows.length===0
-      ? '<tr><td colspan="3" style="text-align:center;color:#888;">No absences recorded — full attendance in all saved reports.</td></tr>'
+      ? '<tr><td colspan="3" style="text-align:center;color:#666;padding:12px;">No absences recorded — full attendance in all saved reports.</td></tr>'
       : rows.map(function(r){
           const pillCls = r.isFullDay ? 'pill-absent' : 'pill-partial';
           const label = r.isFullDay ? 'Full Day Absent' : 'Absent — Hour '+r.hoursAbsent.join(', ');
@@ -1256,25 +1256,50 @@ export default function App(){
 
     const generatedOn = new Date().toLocaleString('en-IN',{ dateStyle:'medium', timeStyle:'short' });
 
+    const MODERN_PRINT_STYLE = '*{box-sizing:border-box;}'
+      + 'body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#2c3e50;margin:24px;background:#fff;}'
+      + '.header{text-align:center;margin-bottom:20px;border-bottom:2px solid #e2e8f0;padding-bottom:12px;}'
+      + '.college-name{font-size:20px;font-weight:800;color:#1e3a8a;margin:0 0 4px;text-transform:uppercase;letter-spacing:0.5px;}'
+      + '.dept-name{font-size:13px;font-weight:600;color:#0f766e;margin:0 0 4px;}'
+      + '.report-title{font-size:14px;font-weight:700;color:#475569;margin:0;}'
+      + '.meta{font-size:11px;color:#64748b;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}'
+      + 'h2{font-size:13px;color:#1e3a8a;margin:16px 0 6px;text-transform:uppercase;letter-spacing:0.3px;}'
+      + 'table{width:100%;border-collapse:separate;border-spacing:0;font-size:11.5px;margin-bottom:12px;border-radius:8px;overflow:hidden;border:1px solid #cbd5e1;}'
+      + 'th,td{padding:7px 10px;text-align:left;border-bottom:1px solid #e2e8f0;border-right:1px solid #e2e8f0;}'
+      + 'th:last-child,td:last-child{border-right:none;}'
+      + 'tbody tr:last-child td{border-bottom:none;}'
+      + 'th{background:#f8fafc;color:#334155;font-weight:700;}'
+      + 'td.num{text-align:center;}'
+      + '.student-info td.label{background:#f1f5f9;font-weight:600;width:35%;color:#334155;}'
+      + '.pill{display:inline-block;padding:2px 8px;border-radius:12px;font-weight:700;font-size:10.5px;}'
+      + '.pill-present{background:#dcfce7;color:#15803d;}'
+      + '.pill-absent{background:#fee2e2;color:#b91c1c;}'
+      + '.pill-partial{background:#fef9c3;color:#a16207;}'
+      + 'tbody tr:nth-child(even){background:#fafafa;}'
+      + '.footer{position:fixed;bottom:8mm;left:0;right:0;text-align:center;font-size:7.5px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:4px;}'
+      + '@media print{body{margin:10mm;}}';
+
     const printHtml = '<!DOCTYPE html><html><head><meta charset="utf-8" />'
       + '<title>Individual Attendance Report — '+escapeHtml(student.rollNo)+'</title>'
-      + '<style>'+PRINT_BASE_STYLE+'</style></head><body>'
-      + '<h1>BCA Department — Individual Attendance Report</h1>'
-      + '<div class="meta">Class: '+escapeHtml(className)+' · Generated on '+escapeHtml(generatedOn)+'</div>'
+      + '<style>'+MODERN_PRINT_STYLE+'</style></head><body>'
+      + '<div class="header">'
+      + '<div class="college-name">Bishop Heber College</div>'
+      + '<div class="dept-name">Department of Computer Applications (BCA)</div>'
+      + '<div class="report-title">Individual Student Attendance Report</div>'
+      + '</div>'
+      + '<div class="meta"><span>Class: <b>'+escapeHtml(className)+'</b></span><span>Generated: '+escapeHtml(generatedOn)+'</span></div>'
       + '<table class="student-info"><tbody>'
-      + '<tr><td class="label">Student Name</td><td>'+escapeHtml(student.name)+'</td></tr>'
-      + '<tr><td class="label">Roll Number</td><td>'+escapeHtml(student.rollNo)+'</td></tr>'
+      + '<tr><td class="label">Student Name</td><td><b>'+escapeHtml(student.name)+'</b></td></tr>'
+      + '<tr><td class="label">Roll Number</td><td><b>'+escapeHtml(student.rollNo)+'</b></td></tr>'
       + '<tr><td class="label">Student Mobile</td><td>'+escapeHtml(student.studentMob||'—')+'</td></tr>'
-      + '<tr><td class="label">Father Mobile</td><td>'+escapeHtml(student.fatherMob||'—')+'</td></tr>'
-      + '<tr><td class="label">College ID</td><td>'+escapeHtml(student.collegeID||'—')+'</td></tr>'
-      + '<tr><td class="label">Part One Language</td><td>'+escapeHtml(student.partOne||'—')+'</td></tr>'
       + '<tr><td class="label">Date of Birth</td><td>'+escapeHtml(student.dob||'—')+'</td></tr>'
-      + '<tr><td class="label">Overall Attendance %</td><td>'+(pct!=null ? escapeHtml(pct)+'%' : '—')+'</td></tr>'
+      + '<tr><td class="label">Part One Language</td><td>'+escapeHtml(student.partOne||'—')+'</td></tr>'
+      + '<tr><td class="label">Overall Attendance %</td><td><b>'+(pct!=null ? escapeHtml(pct)+'%' : '—')+'</b></td></tr>'
       + '</tbody></table>'
       + '<h2>Absence Record</h2>'
       + '<table><thead><tr><th>Date</th><th>Hour(s) Absent</th><th>Status</th></tr></thead>'
       + '<tbody>'+rowsHtml+'</tbody></table>'
-      + '<div class="footer">BCA App · Individual Attendance Report</div>'
+      + '<div class="footer">BCA Class Portal Record · Student-managed internal utility report. May contain minor discrepancies compared to official college portals.</div>'
       + '</body></html>';
 
     if(openPrintWindow(printHtml)){
