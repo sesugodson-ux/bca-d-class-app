@@ -1119,8 +1119,7 @@ export default function App(){
                         <div className="src-roll">Roll No {s.rollNo} · #{s.id}</div>
                       </div>
                       <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                        {pct!=null && <span className={"attendance-pct-chip"+(pct<75?' low':'')}>{pct}% present</span>}
-                        {left && <span className="left-badge">Left</span>}
+button                        {left && <span className="left-badge">Left</span>}
                         <button type="button" className="edit-student-btn" onClick={function(){ openEditModal(s.id); }}>✏ Edit</button>
                       </div>
                     </div>
