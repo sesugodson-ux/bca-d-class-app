@@ -50,12 +50,25 @@ function escapeCsv(str){
   if(/[",\n]/.test(s)) return '"'+s.replace(/"/g,'""')+'"';
   return s;
 }
+function escapeHtml(str){
+  return String(str==null?'':str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 function storagePathFromUrl(url, bucket){
   if(!url) return null;
   const marker = '/object/public/'+bucket+'/';
   const idx = url.indexOf(marker);
   if(idx===-1) return null;
   return url.slice(idx+marker.length);
+}
+/* Strict numeric comparator — parses the leading/trailing digits of a roll
+   number and sorts purely on that integer value (falls back to 0). */
+function numericRollCompare(a, b){
+  const numA = parseInt(String(a).trim(), 10);
+  const numB = parseInt(String(b).trim(), 10);
+  const safeA = isNaN(numA) ? 0 : numA;
+  const safeB = isNaN(numB) ? 0 : numB;
+  return safeA - safeB;
 }
 
 const STUDY_TABLE = 'study_materials';
@@ -110,27 +123,27 @@ export default function App(){
     showToast('Class name updated');
   }
 
-  /* ---------- student db ===== NOW FETCHED LIVE FROM SUPABASE ('students' table) ===== */
+  /* ---------- student db ===== FETCHED LIVE FROM SUPABASE ('students' table) ===== */
   const [studentDb, setStudentDb] = useState([]);
   const fetchStudents = useCallback(async function(){
     try {
-      // 1. Order by roll_number so the grid displays sequentially
+      // Order by roll_number so the grid displays sequentially from the DB too
       const { data, error } = await supabase
         .from('students')
         .select('*')
         .order('roll_number', { ascending: true });
 
-      if (error) { 
-        console.error(error); 
-        showToast('Could not load student database', true); 
-        return; 
+      if (error) {
+        console.error(error);
+        showToast('Could not load student database', true);
+        return;
       }
 
-      // 2. Map the correct database columns
+      // Correct DB column mapping: student_name -> name, roll_number -> rollNo
       const mapped = (data || []).map(function(row) {
         return {
           id: String(row.id),
-          rollNo: row.roll_number || row.roll_no || row.rollNo || '', 
+          rollNo: String(row.roll_number || row.roll_no || row.rollNo || '').trim(),
           name: row.student_name || row.name || '',
           studentMob: row.student_mob || row.studentMob || '',
           fatherMob: row.father_mob || row.fatherMob || '',
@@ -141,9 +154,9 @@ export default function App(){
       });
 
       setStudentDb(mapped);
-    } catch(e) { 
-      console.error(e); 
-      showToast('Could not load student database', true); 
+    } catch(e) {
+      console.error(e);
+      showToast('Could not load student database', true);
     }
   }, []);
   function updateStudentById(id, updates){
@@ -296,22 +309,100 @@ export default function App(){
     }catch(e){ console.error(e); showToast('Could not save timetable slot', true); }
   }
 
-  /* ---------- attendance history ---------- */
+  /* ---------- attendance history (date-wise, hour-grouped) ---------- */
   const [history, setHistory] = useState([]);
+  const [expandedHistoryId, setExpandedHistoryId] = useState(null);
   const fetchHistory = useCallback(async function(){
     try{
-      const { data, error } = await supabase.from('attendance_history').select('*').order('saved_at',{ascending:false});
+      const { data, error } = await supabase.from('attendance_history').select('*').order('date',{ascending:false});
       if(error){ console.error(error); return; }
       setHistory(data||[]);
     }catch(e){ console.error(e); }
   }, []);
+  function toggleHistoryExpand(id){
+    setExpandedHistoryId(function(cur){ return cur === id ? null : id; });
+  }
+
+  /* Returns a normalized hours map { "1": [rollNo,...], ..., "5": [...] } for
+     both new date-grouped rows (entry.hours) and legacy per-submission rows
+     (entry.hour + entry.absent_rolls), so old data keeps working. */
+  function normalizeHoursMap(entry){
+    const map = {};
+    HOURS.forEach(function(h){ map[String(h)] = []; });
+    if(entry && entry.hours && typeof entry.hours === 'object'){
+      HOURS.forEach(function(h){
+        const key = String(h);
+        map[key] = Array.isArray(entry.hours[key]) ? entry.hours[key] : [];
+      });
+    } else if(entry && entry.hour){
+      const key = String(entry.hour);
+      if(map[key] !== undefined){ map[key] = entry.absent_rolls || []; }
+    }
+    return map;
+  }
+
+  /* Per-student breakdown for a single date entry: which hours they were
+     absent in, and whether that adds up to a full-day absence. */
+  function getDateAbsenteeBreakdown(entry){
+    const hoursMap = normalizeHoursMap(entry);
+    const rollHourMap = {};
+    HOURS.forEach(function(h){
+      const rolls = hoursMap[String(h)] || [];
+      rolls.forEach(function(rollNo){
+        if(!rollHourMap[rollNo]) rollHourMap[rollNo] = [];
+        rollHourMap[rollNo].push(h);
+      });
+    });
+    const totalHours = HOURS.length;
+    const breakdown = Object.keys(rollHourMap).map(function(rollNo){
+      const hoursAbsent = rollHourMap[rollNo].slice().sort(function(a,b){ return a-b; });
+      const student = studentDb.find(function(s){ return s.rollNo === rollNo; });
+      const isFullDay = hoursAbsent.length >= totalHours;
+      return {
+        rollNo: rollNo,
+        name: student ? student.name : rollNo,
+        hoursAbsent: hoursAbsent,
+        isFullDay: isFullDay,
+        label: isFullDay ? 'Full Day Absent' : 'Absent in Hour: '+hoursAbsent.join(', ')
+      };
+    });
+    breakdown.sort(function(a,b){ return numericRollCompare(a.rollNo, b.rollNo); });
+    return breakdown;
+  }
+
+  function buildHistoryMessage(entry){
+    const niceDate = formatNiceDate(entry.date);
+    const breakdown = getDateAbsenteeBreakdown(entry);
+    const lines = [];
+    lines.push('Class: '+(entry.class_name||className));
+    lines.push('----------------------------------------');
+    lines.push('📅 Date: '+niceDate);
+    lines.push('----------------------------------------');
+    lines.push('Absent Students List:');
+    if(breakdown.length===0){ lines.push('✅ No absentees recorded.'); }
+    else {
+      breakdown.forEach(function(b,i){
+        lines.push(String(i+1).padStart(2,'0')+'. '+b.rollNo+' - '+b.name+' — '+b.label);
+      });
+    }
+    lines.push('----------------------------------------');
+    return lines.join('\n');
+  }
+
   function getAttendancePercent(rollNo){
     if(history.length===0) return null;
     let conducted=0, present=0;
     history.forEach(function(entry){
-      conducted+=1;
-      const absentRolls = entry.absent_rolls||[];
-      if(absentRolls.indexOf(rollNo)===-1) present+=1;
+      const hoursMap = normalizeHoursMap(entry);
+      HOURS.forEach(function(h){
+        const rolls = hoursMap[String(h)] || [];
+        // Only count an hour as "conducted" if that hour slot has any data
+        // recorded for this date (i.e. attendance was actually taken for it).
+        if(entry.hours ? (entry.hours[String(h)] !== undefined) : (String(entry.hour)===String(h))){
+          conducted += 1;
+          if(rolls.indexOf(rollNo)===-1) present += 1;
+        }
+      });
     });
     if(conducted===0) return null;
     return Math.round((present/conducted)*1000)/10;
@@ -415,31 +506,26 @@ export default function App(){
     return studentDb.filter(function(s){ return s.name!=='XX' && leftIds.indexOf(s.id)===-1; });
   }, [studentDb, leftIds]);
 
+  /* Grid shows every student (including XX placeholders) so Left / XX rows
+     stay visible but shaded+disabled, rather than disappearing entirely.
+     Sorted with a strict numeric comparator on roll number. */
   const gridStudents = useMemo(function(){
     return studentDb
-      .filter(function(s){ return s.name !== 'XX'; })
-      .sort(function(a, b){
-        // Explicitly sort by rollNo on the frontend to guarantee correct grid order
-        return String(a.rollNo).localeCompare(String(b.rollNo), undefined, { numeric: true });
-      });
+      .slice()
+      .sort(function(a, b){ return numericRollCompare(a.rollNo, b.rollNo); });
   }, [studentDb]);
 
   const summary = useMemo(function(){
     const absentList = activeStudents
       .filter(function(s){ return rollState[s.id]==='absent'; })
-      .sort(function(a, b){
-        // Strict mathematical subtraction for flawless numeric sorting
-        const numA = parseInt(String(a.rollNo).trim(), 10) || 0;
-        const numB = parseInt(String(b.rollNo).trim(), 10) || 0;
-        return numA - numB;
-      });
-      
+      .sort(function(a, b){ return numericRollCompare(a.rollNo, b.rollNo); });
+
     const totalEnrolled = studentDb.length;
     const totalLeft = leftIds.length;
     const totalActive = activeStudents.length;
     const totalAbsent = absentList.length;
     const totalPresent = totalActive - totalAbsent;
-    
+
     return { absentList, totalEnrolled, totalLeft, totalActive, totalAbsent, totalPresent };
   }, [activeStudents, rollState, studentDb, leftIds]);
 
@@ -490,21 +576,56 @@ export default function App(){
       navigator.clipboard.writeText(text).then(function(){ showToast('Message Copied!'); }).catch(function(){ fallbackCopy(text); });
     } else { fallbackCopy(text); }
   }
+
+  /* Saves (or merges) attendance for the selected hour into the date-wise
+     history record. If a record already exists for dateVal, only that hour's
+     slot in the "hours" JSON is overwritten — the other hours already saved
+     for that date are preserved. Uses upsert on the unique "date" column. */
   async function handleSaveHistory(){
     if(!validateBeforeSend()){ triggerShake('saveHistoryBtn'); return; }
-    const entry = {
-      date: dateVal, hour: parseInt(hourVal,10)||null, subject_name: subjectVal.trim(),
-      class_name: className,
-      absent_rolls: summary.absentList.map(function(s){ return s.rollNo; }),
-      total_enrolled: summary.totalEnrolled, total_left: summary.totalLeft,
-      total_active: summary.totalActive, total_absent: summary.totalAbsent,
-      total_present: summary.totalPresent, message: buildRawMessage()
-    };
+    const hourKey = String(hourVal);
+    const absentRolls = summary.absentList.map(function(s){ return s.rollNo; });
+
     try{
-      const { error } = await supabase.from('attendance_history').insert(entry);
-      if(error){ console.error(error); showToast('Could not save to history', true); return; }
-      showToast('Saved to history'); fetchHistory();
-    }catch(e){ console.error(e); showToast('Could not save to history', true); }
+      const { data: existing, error: fetchError } = await supabase
+        .from('attendance_history')
+        .select('*')
+        .eq('date', dateVal)
+        .limit(1);
+
+      if(fetchError){ console.error(fetchError); showToast('Could not save to history', true); return; }
+
+      const existingRow = existing && existing.length > 0 ? existing[0] : null;
+
+      let hoursMap = existingRow && existingRow.hours ? { ...existingRow.hours } : {};
+      HOURS.forEach(function(h){
+        const key = String(h);
+        if(!Array.isArray(hoursMap[key])) hoursMap[key] = hoursMap[key] || [];
+      });
+      hoursMap[hourKey] = absentRolls;
+
+      const record = {
+        date: dateVal,
+        class_name: className,
+        hours: hoursMap,
+        total_enrolled: summary.totalEnrolled,
+        total_left: summary.totalLeft,
+        total_active: summary.totalActive,
+        saved_at: new Date().toISOString()
+      };
+
+      const { error: upsertError } = await supabase
+        .from('attendance_history')
+        .upsert(record, { onConflict: 'date' });
+
+      if(upsertError){ console.error(upsertError); showToast('Could not save to history', true); return; }
+
+      showToast(existingRow ? 'Hour '+hourVal+' merged into '+formatNiceDate(dateVal) : 'Saved to history');
+      fetchHistory();
+    }catch(e){
+      console.error(e);
+      showToast('Could not save to history', true);
+    }
   }
 
   /* ================= STUDENT DATABASE ================= */
@@ -673,8 +794,6 @@ export default function App(){
     const subject = studyMaterialSubject.trim();
     const title = studyMaterialTitle.trim();
 
-    console.log('Subject selected in dropdown:', subject);
-
     if (!subject) {
       triggerShake('studyMaterialSubject');
       showToast('Select a subject', true);
@@ -709,8 +828,6 @@ export default function App(){
 
       const { data: publicUrlData } = supabase.storage.from(STUDY_BUCKET).getPublicUrl(path);
       const fileUrl = publicUrlData?.publicUrl;
-
-      console.log('Inserting into DB with subject_id:', subjectId);
 
       const { error: insertError } = await supabase.from(STUDY_TABLE).insert({
         subject_id: subjectId,
@@ -754,14 +871,12 @@ export default function App(){
     return Math.round((obtained/max)*1000)/10;
   }, [semesterRows]);
 
-  // Admin: add marks form state
   const [semAddRoll, setSemAddRoll] = useState('');
   const [semAddSemester, setSemAddSemester] = useState('');
   const [semAddSubject, setSemAddSubject] = useState('');
   const [semAddMarks, setSemAddMarks] = useState('');
   const [semAddMaxMarks, setSemAddMaxMarks] = useState('100');
   const [semAddBusy, setSemAddBusy] = useState(false);
-  // Admin: browse any roll number
   const [semBrowseRoll, setSemBrowseRoll] = useState('');
 
   async function handleAdminAddMarks(){
@@ -780,7 +895,6 @@ export default function App(){
       if(error){ showToast('Could not add marks: '+error.message, true); setSemAddBusy(false); return; }
       showToast('Marks added successfully');
       setSemAddSubject(''); setSemAddMarks(''); setSemAddMaxMarks('100');
-      // Refresh the displayed results if we're looking at this roll
       if(semBrowseRoll.trim()===rollNo || (!semBrowseRoll.trim() && currentStudyRollNo===rollNo)){
         await fetchSemesterResults(rollNo);
       }
@@ -800,7 +914,6 @@ export default function App(){
       const { error } = await supabase.from('semester_results').delete().eq('id', id);
       if(error){ showToast('Could not delete entry', true); return; }
       showToast('Entry deleted');
-      // Refresh
       const rollToRefresh = semBrowseRoll.trim() || currentStudyRollNo;
       if(rollToRefresh) await fetchSemesterResults(rollToRefresh);
     }catch(e){ console.error(e); showToast('Could not delete entry', true); }
@@ -862,15 +975,23 @@ export default function App(){
 
   function handleExportCsv(){
     if(history.length===0){ showToast('No history to export', true); return; }
-    const headers = ['Date','Class','Subject','Total Enrolled','Left','Total Strength','Absent Count','Present Count','Absent Rolls','Saved At'];
+    const headers = ['Date','Class','Hours With Absentees','Total Strength','Absent Count','Present Count'];
     const rows = [headers.map(escapeCsv).join(',')];
     history.forEach(function(entry){
+      const hoursMap = normalizeHoursMap(entry);
+      const allRolls = new Set();
+      const activeHours = [];
+      HOURS.forEach(function(h){
+        const rolls = hoursMap[String(h)] || [];
+        if(rolls.length>0) activeHours.push(h);
+        rolls.forEach(function(r){ allRolls.add(r); });
+      });
+      const totalActive = entry.total_active!=null ? entry.total_active : '';
+      const absentCount = allRolls.size;
+      const presentCount = entry.total_active!=null ? Math.max(entry.total_active-absentCount,0) : '';
       rows.push([
-        entry.date||'', entry.class_name||'', entry.subject_name||'',
-        entry.total_enrolled!=null?entry.total_enrolled:'', entry.total_left!=null?entry.total_left:'',
-        entry.total_active!=null?entry.total_active:'', entry.total_absent!=null?entry.total_absent:'',
-        entry.total_present!=null?entry.total_present:'',
-        (entry.absent_rolls||[]).join('; '), entry.saved_at||''
+        entry.date||'', entry.class_name||'', activeHours.join('; '),
+        totalActive, absentCount, presentCount
       ].map(escapeCsv).join(','));
     });
     const csvContent = rows.join('\r\n');
@@ -882,6 +1003,84 @@ export default function App(){
     URL.revokeObjectURL(url);
     showToast('CSV downloaded');
   }
+
+  /* Opens a print-styled popup with the attendance history table and
+     triggers the browser print dialog so the admin can "Save as PDF". */
+  function handleExportPdf(){
+    if(history.length===0){ showToast('No history to export', true); return; }
+
+    function subjectOrHoursLabel(entry){
+      const hoursMap = normalizeHoursMap(entry);
+      const activeHours = HOURS.filter(function(h){ return (hoursMap[String(h)]||[]).length > 0; });
+      return activeHours.length ? 'Hours: '+activeHours.join(', ') : 'All hours — no absentees';
+    }
+    function absentCount(entry){
+      const hoursMap = normalizeHoursMap(entry);
+      const rolls = new Set();
+      HOURS.forEach(function(h){ (hoursMap[String(h)]||[]).forEach(function(r){ rolls.add(r); }); });
+      return rolls.size;
+    }
+    function presentCount(entry){
+      const strength = entry.total_active!=null ? entry.total_active : 0;
+      return Math.max(strength - absentCount(entry), 0);
+    }
+
+    const rowsHtml = history.map(function(entry){
+      return (
+        '<tr>'
+        + '<td>'+escapeHtml(formatNiceDate(entry.date))+'</td>'
+        + '<td>'+escapeHtml(entry.class_name||className)+'</td>'
+        + '<td>'+escapeHtml(subjectOrHoursLabel(entry))+'</td>'
+        + '<td class="num">'+escapeHtml(entry.total_active!=null?entry.total_active:'—')+'</td>'
+        + '<td class="num absent">'+escapeHtml(absentCount(entry))+'</td>'
+        + '<td class="num present">'+escapeHtml(presentCount(entry))+'</td>'
+        + '</tr>'
+      );
+    }).join('');
+
+    const generatedOn = new Date().toLocaleString('en-IN',{ dateStyle:'medium', timeStyle:'short' });
+
+    const printHtml = '<!DOCTYPE html><html><head><meta charset="utf-8" />'
+      + '<title>Attendance History Report</title>'
+      + '<style>'
+      + '*{box-sizing:border-box;}'
+      + 'body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a1a1a;margin:32px;}'
+      + 'h1{font-size:20px;margin:0 0 2px;}'
+      + '.meta{font-size:12px;color:#555;margin-bottom:20px;}'
+      + 'table{width:100%;border-collapse:collapse;font-size:12px;}'
+      + 'th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;}'
+      + 'th{background:#f0f0f0;font-weight:600;}'
+      + 'td.num{text-align:center;}'
+      + 'td.absent{color:#c0392b;font-weight:600;}'
+      + 'td.present{color:#1e8449;font-weight:600;}'
+      + 'tbody tr:nth-child(even){background:#fafafa;}'
+      + '.footer{margin-top:24px;font-size:11px;color:#888;text-align:center;}'
+      + '@media print{body{margin:12mm;}.footer{position:fixed;bottom:8mm;left:0;right:0;}}'
+      + '</style></head><body>'
+      + '<h1>Attendance History Report — '+escapeHtml(className)+'</h1>'
+      + '<div class="meta">Generated on '+escapeHtml(generatedOn)+' · '+history.length+' record(s)</div>'
+      + '<table><thead><tr><th>Date</th><th>Class</th><th>Subject / Hours</th><th>Total Strength</th><th>Absent</th><th>Present</th></tr></thead>'
+      + '<tbody>'+rowsHtml+'</tbody></table>'
+      + '<div class="footer">BCA App · Attendance Report</div>'
+      + '</body></html>';
+
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    if(!printWindow){
+      showToast('Please allow popups to export PDF', true);
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(printHtml);
+    printWindow.document.close();
+
+    printWindow.onload = function(){
+      printWindow.focus();
+      printWindow.print();
+    };
+
+    showToast('Opening print dialog — choose "Save as PDF"');
+  }
+
   async function handleDeleteHistoryEntry(id){
     try{
       const { error } = await supabase.from('attendance_history').delete().eq('id', id);
@@ -1036,24 +1235,29 @@ export default function App(){
               <div className="grid-legend">
                 <span><i className="legend-swatch present"></i>Present</span>
                 <span><i className="legend-swatch absent"></i>Absent</span>
-                <span><i className="legend-swatch left"></i>Left college</span>
+                <span><i className="legend-swatch left"></i>Left / XX (disabled)</span>
               </div>
-              <p className="helper-text" style={{marginTop:0}}>Tap a roll number to cycle Present → Absent → Present. Left students stay visible but are disabled.</p>
-              <div className="attendance-grid">
+              <p className="helper-text" style={{marginTop:0}}>Tap a roll number to cycle Present → Absent → Present. Left students and unresolved "XX" entries stay visible but shaded and disabled.</p>
+              <div className="attendance-grid" style={{ display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:8 }}>
                 {gridStudents.map(function(s){
+                  const isXX = s.name === 'XX';
                   const isLeft = leftIds.indexOf(s.id) !== -1;
+                  const isDisabled = isXX || isLeft;
                   const state = rollState[s.id] || 'present';
-                  const displayNum = (s.rollNo && String(s.rollNo).trim() !== 'XX') ? String(s.rollNo).slice(-2) : 'XX';
+                  const displayNum = (s.rollNo && String(s.rollNo).trim() !== '') ? String(s.rollNo).slice(-2) : '—';
 
                   return (
                     <button
                       key={s.id}
                       type="button"
-                      className={"roll-btn" + (isLeft ? ' state-left' : (state === 'absent' ? ' state-absent' : ''))}
-                      title={s.name + ' · ' + s.rollNo + (isLeft ? ' (Left)' : '')}
-                      aria-label={s.name + (isLeft ? ' — Left' : ' — ' + state)}
-                      disabled={isLeft}
-                      onClick={function(){ if(!isLeft) cycleRollState(s.id); }}>
+                      className={
+                        "roll-btn"
+                        + (isDisabled ? ' state-left' : (state === 'absent' ? ' state-absent' : ''))
+                      }
+                      title={(isXX ? 'Unresolved roll' : s.name) + ' · ' + s.rollNo + (isLeft ? ' (Left)' : '') + (isXX ? ' (XX)' : '')}
+                      aria-label={(isXX ? 'Unresolved' : s.name) + (isDisabled ? ' — disabled' : ' — ' + state)}
+                      disabled={isDisabled}
+                      onClick={function(){ if(!isDisabled) cycleRollState(s.id); }}>
                       {displayNum}
                     </button>
                   );
@@ -1145,10 +1349,10 @@ export default function App(){
                     <div className="src-head">
                       <div>
                         <div className="src-name">{s.name}</div>
-                        <div className="src-roll">Roll No {s.rollNo} · #{s.id}</div>
+                        <div className="src-roll">Roll No {s.rollNo} · #{s.id}{pct!=null ? ' · '+pct+'% attendance' : ''}</div>
                       </div>
                       <div style={{display:'flex',gap:8,alignItems:'center'}}>
-button                        {left && <span className="left-badge">Left</span>}
+                        {left && <span className="left-badge">Left</span>}
                         <button type="button" className="edit-student-btn" onClick={function(){ openEditModal(s.id); }}>✏ Edit</button>
                       </div>
                     </div>
@@ -1276,7 +1480,6 @@ button                        {left && <span className="left-badge">Left</span>}
               <h2 className="landing-heading">{currentStudyIsAdmin ? 'Manage Results' : 'Your Results'}</h2>
             </div>
 
-            {/* ADMIN ONLY: Add Marks Form */}
             {currentStudyIsAdmin && (
               <section className="card">
                 <h2 className="card-title">Add / Update Marks</h2>
@@ -1313,7 +1516,6 @@ button                        {left && <span className="left-badge">Left</span>}
               </section>
             )}
 
-            {/* ADMIN ONLY: Browse any student */}
             {currentStudyIsAdmin && (
               <section className="card">
                 <h2 className="card-title">Browse Student Results</h2>
@@ -1326,7 +1528,6 @@ button                        {left && <span className="left-badge">Left</span>}
               </section>
             )}
 
-            {/* Results display — both student & admin see this */}
             <section className="card">
               <div className="semester-select-row">
                 {semesterList.length===0 && <span className="empty-state">No results published yet.</span>}
@@ -1371,7 +1572,6 @@ button                        {left && <span className="left-badge">Left</span>}
               <h2 className="landing-heading">{currentStudyIsAdmin ? 'Manage Study Material' : 'Study Material Repository'}</h2>
             </div>
 
-            {/* ADMIN ONLY: Add Subject */}
             {currentStudyIsAdmin && (
               <section className="card">
                 <h2 className="card-title">Add Subject</h2>
@@ -1395,7 +1595,6 @@ button                        {left && <span className="left-badge">Left</span>}
               </section>
             )}
 
-            {/* ADMIN ONLY: Upload Material */}
             {currentStudyIsAdmin && (
               <section className="card">
                 <h2 className="card-title">Upload Material</h2>
@@ -1421,7 +1620,6 @@ button                        {left && <span className="left-badge">Left</span>}
               </section>
             )}
 
-            {/* Repository — visible to all */}
             <section className="card">
               <div className="card-title-row">
                 <h2 className="card-title">Repository</h2>
@@ -1451,8 +1649,6 @@ button                        {left && <span className="left-badge">Left</span>}
                         return (
                           <div key={m.id} className="manage-row study-material-row">
                             <span className="manage-row-text">
-                              {/* Students: clickable preview link opening in new tab (no forced download).
-                                  Admins: plain text name + delete button */}
                               {currentStudyIsAdmin
                                 ? m.file_name
                                 : <a href={m.file_url} target="_blank" rel="noopener noreferrer">📄 {m.file_name}</a>
@@ -1544,7 +1740,7 @@ button                        {left && <span className="left-badge">Left</span>}
 
             <section className="card">
               <h2 className="card-title">Manage Students</h2>
-              <p className="helper-text" style={{marginTop:0}}>Mark students who have left the college. They are hidden from the grid and excluded from all totals.</p>
+              <p className="helper-text" style={{marginTop:0}}>Mark students who have left the college. They are hidden from active totals but stay visible (shaded) on the grid.</p>
               <div className="student-search-wrap">
                 <input type="text" placeholder="Search by name or roll number…" autoComplete="off" value={studentSearchQuery} onChange={function(e){ setStudentSearchQuery(e.target.value); }} />
               </div>
@@ -1594,28 +1790,51 @@ button                        {left && <span className="left-badge">Left</span>}
             <section className="card">
               <div className="card-title-row">
                 <h2 className="card-title">Attendance History</h2>
-                <button type="button" className="link-btn" onClick={handleExportCsv}>Export CSV</button>
+                <button type="button" className="link-btn" onClick={handleExportPdf}>Export PDF</button>
               </div>
-              <p className="helper-text" style={{marginTop:0}}>Every report you save from Attendance Report shows up here.</p>
+              <p className="helper-text" style={{marginTop:0}}>Each entry below groups all 5 hours saved for that date. Tap a date to see the hour-wise absentee breakdown.</p>
               <div className="manage-list">
                 {history.length===0 && <div className="empty-state">No saved reports yet — use "Save to History" in Attendance Report.</div>}
                 {history.map(function(entry){
+                  const isOpen = expandedHistoryId === entry.id;
+                  const hoursMap = normalizeHoursMap(entry);
+                  const hoursWithAbsentees = HOURS.filter(function(h){ return (hoursMap[String(h)]||[]).length > 0; }).length;
+                  const breakdown = isOpen ? getDateAbsenteeBreakdown(entry) : [];
+                  const allRolls = new Set();
+                  HOURS.forEach(function(h){ (hoursMap[String(h)]||[]).forEach(function(r){ allRolls.add(r); }); });
+                  const absentCount = allRolls.size;
+                  const presentCount = entry.total_active!=null ? Math.max(entry.total_active-absentCount,0) : null;
+
                   return (
                     <div key={entry.id} className="history-row">
-                      <div className="history-row-top">
+                      <div className="history-row-top" style={{cursor:'pointer'}} onClick={function(){ toggleHistoryExpand(entry.id); }}>
                         <div>
                           <div className="history-row-title">{formatNiceDate(entry.date)}</div>
-                          <div className="history-row-meta">{entry.subject_name||'—'} · {entry.class_name||'—'}</div>
+                          <div className="history-row-meta">{entry.class_name||'—'} · {hoursWithAbsentees} of {HOURS.length} hour(s) with absentees</div>
                         </div>
+                        <span className="link-btn">{isOpen ? 'Hide' : 'View breakdown'}</span>
                       </div>
                       <div className="history-row-stats">
-                        <span><b>{entry.total_active}</b> strength</span>
-                        <span><b>{entry.total_absent}</b> absent</span>
-                        <span><b>{entry.total_present}</b> present</span>
+                        <span><b>{entry.total_active!=null?entry.total_active:'—'}</b> strength</span>
+                        <span><b>{absentCount}</b> absent</span>
+                        <span><b>{presentCount!=null?presentCount:'—'}</b> present</span>
                       </div>
+                      {isOpen && (
+                        <div className="history-breakdown" style={{marginTop:8,borderTop:'1px solid var(--border)',paddingTop:8}}>
+                          {breakdown.length===0 && <div className="empty-state">No absentees recorded for this date.</div>}
+                          {breakdown.map(function(b){
+                            return (
+                              <div key={b.rollNo} className="result-row">
+                                <span className="result-row-subject">{b.rollNo} - {b.name}</span>
+                                <span className={"result-row-marks"+(b.isFullDay?' low':'')}>{b.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                       <div className="history-actions">
-                        <button type="button" onClick={function(){ handleCopyHistoryMessage(entry.message||''); }}>Copy Message</button>
-                        <button type="button" className="danger" onClick={function(){ handleDeleteHistoryEntry(entry.id); }}>Delete</button>
+                        <button type="button" onClick={function(e){ e.stopPropagation(); handleCopyHistoryMessage(buildHistoryMessage(entry)); }}>Copy Message</button>
+                        <button type="button" className="danger" onClick={function(e){ e.stopPropagation(); handleDeleteHistoryEntry(entry.id); }}>Delete</button>
                       </div>
                     </div>
                   );
