@@ -2,90 +2,10 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from './supabaseClient';
 import './App.css';
 
-const BASE_STUDENTS = [
-  {"id":"01","rollNo":"255113401","name":"AALAN ASHNUWA V","studentMob":"9488631753","fatherMob":"8072843691","collegeID":"ca255113401@bhc.edu.in","partOne":"Tamil","dob":"03-09-2007"},
-  {"id":"02","rollNo":"255113402","name":"AATHAVAN A","studentMob":"8940632310","fatherMob":"9235602625","collegeID":"ca255113402@bhc.edu.in","partOne":"Tamil","dob":"12-04-2008"},
-  {"id":"03","rollNo":"255113403","name":"ABDUL AZEEM N","studentMob":"9789464144","fatherMob":"9789796144","collegeID":"ca255113403@bhc.edu.in","partOne":"French","dob":"30-10-2004"},
-  {"id":"04","rollNo":"255113404","name":"ABISHEK C S","studentMob":"9994305155","fatherMob":"9994305155","collegeID":"ca255113404@bhc.edu.in","partOne":"Tamil","dob":"01-05-2008"},
-  {"id":"05","rollNo":"255113405","name":"ABISHEK SIRUS P","studentMob":"9787494441","fatherMob":"6374102332","collegeID":"ca255113405@bhc.edu.in","partOne":"Tamil","dob":"19-07-2008"},
-  {"id":"06","rollNo":"255113406","name":"AHAJAS AHMED R","studentMob":"9600750055","fatherMob":"9600540055","collegeID":"ca255113406@bhc.edu.in","partOne":"French","dob":"22-12-2006"},
-  {"id":"07","rollNo":"255113407","name":"AJAY D","studentMob":"6382623785","fatherMob":"9688757626","collegeID":"ca255113407@bhc.edu.in","partOne":"Tamil","dob":"14-02-2008"},
-  {"id":"08","rollNo":"255113408","name":"AKASH M","studentMob":"8610657681","fatherMob":"7094762118","collegeID":"ca255113408@bhc.edu.in","partOne":"Tamil","dob":"27-10-2007"},
-  {"id":"09","rollNo":"255113409","name":"AKASH R","studentMob":"9894643662","fatherMob":"9629600289","collegeID":"ca255113409@bhc.edu.in","partOne":"Tamil","dob":"29-05-2008"},
-  {"id":"10","rollNo":"255113410","name":"ALEX S","studentMob":"8610146310","fatherMob":"9442706201","collegeID":"ca255113410@bhc.edu.in","partOne":"Tamil","dob":"18-01-2008"},
-  {"id":"11","rollNo":"255113411","name":"ALLENJOE","studentMob":"7845333228","fatherMob":"9443005134","collegeID":"ca255113411@bhc.edu.in","partOne":"Tamil","dob":"03-11-2007"},
-  {"id":"12","rollNo":"255113412","name":"ANBARASU S","studentMob":"6382904059","fatherMob":"9791460413","collegeID":"ca255113412@bhc.edu.in","partOne":"Tamil","dob":"26-01-2008"},
-  {"id":"13","rollNo":"255113413","name":"ANBUSELVAN K","studentMob":"9080543086","fatherMob":"9080543086","collegeID":"ca255113413@bhc.edu.in","partOne":"Tamil","dob":"14-07-2007"},
-  {"id":"14","rollNo":"255113414","name":"ARIHARAN B","studentMob":"9789705442","fatherMob":"9789705442","collegeID":"ca255113414@bhc.edu.in","partOne":"Tamil","dob":"18-02-2008"},
-  {"id":"15","rollNo":"255113415","name":"ARJUNAN P","studentMob":"8072996487","fatherMob":"8072996487","collegeID":"ca255113415@bhc.edu.in","partOne":"Tamil","dob":"29-03-2008"},
-  {"id":"16","rollNo":"255113416","name":"ARSUDEEN M","studentMob":"9894423722","fatherMob":"8610739993","collegeID":"ca255113416@bhc.edu.in","partOne":"Tamil","dob":"07-07-2008"},
-  {"id":"17","rollNo":"255113417","name":"ARUN KUMAR D","studentMob":"8122653275","fatherMob":"9524557385","collegeID":"ca255113417@bhc.edu.in","partOne":"Tamil","dob":"12-03-2008"},
-  {"id":"18","rollNo":"255113418","name":"ARUNKUMAR P","studentMob":"8760668288","fatherMob":"9629058288","collegeID":"ca255113418@bhc.edu.in","partOne":"Tamil","dob":"18-11-2005"},
-  {"id":"19","rollNo":"255113419","name":"ARUSH VINCENT","studentMob":"9342860631","fatherMob":"9894294325","collegeID":"ca255113419@bhc.edu.in","partOne":"Tamil","dob":"19-03-2008"},
-  {"id":"20","rollNo":"255113420","name":"ASLAM T","studentMob":"8807388638","fatherMob":"6374984646","collegeID":"ca255113420@bhc.edu.in","partOne":"Tamil","dob":"08-07-2008"},
-  {"id":"21","rollNo":"255113421","name":"ASWIN S","studentMob":"7029618790","fatherMob":"9933464688","collegeID":"ca255113421@bhc.edu.in","partOne":"Tamil","dob":"11-04-2007"},
-  {"id":"22","rollNo":"255113422","name":"AUGUSTIN A","studentMob":"6369612143","fatherMob":"9843691107","collegeID":"ca255113422@bhc.edu.in","partOne":"Tamil","dob":"14-02-2008"},
-  {"id":"23","rollNo":"255113423","name":"XX","studentMob":"XX","fatherMob":"XX","collegeID":"XX","partOne":"XX","dob":"XX"},
-  {"id":"24","rollNo":"255113424","name":"BHARANIDHARAN R","studentMob":"8248398278","fatherMob":"9342377107","collegeID":"ca255113424@bhc.edu.in","partOne":"Tamil","dob":"13-02-2008"},
-  {"id":"25","rollNo":"255113425","name":"BHARATHAN M","studentMob":"9025598050","fatherMob":"9025598050","collegeID":"ca255113425@bhc.edu.in","partOne":"Tamil","dob":"13-11-2007"},
-  {"id":"26","rollNo":"255113426","name":"BHARATHRAJ P","studentMob":"9003836638","fatherMob":"8754986103","collegeID":"ca255113426@bhc.edu.in","partOne":"Tamil","dob":"23-05-2008"},
-  {"id":"27","rollNo":"255113427","name":"BHAVADAN S","studentMob":"9789068005","fatherMob":"9941923611","collegeID":"ca255113427@bhc.edu.in","partOne":"Tamil","dob":"12-09-2007"},
-  {"id":"28","rollNo":"255113428","name":"BOOPATHI R","studentMob":"9943884885","fatherMob":"9500604978","collegeID":"ca255113428@bhc.edu.in","partOne":"Tamil","dob":"30-04-2007"},
-  {"id":"29","rollNo":"255113429","name":"DEENAKUMAR R M","studentMob":"8220726843","fatherMob":"9943603448","collegeID":"ca255113429@bhc.edu.in","partOne":"Tamil","dob":"19-05-2008"},
-  {"id":"30","rollNo":"255113430","name":"DEEPAK KUMAR G","studentMob":"8903957189","fatherMob":"8903957189","collegeID":"ca255113430@bhc.edu.in","partOne":"Tamil","dob":"19-05-2008"},
-  {"id":"31","rollNo":"255113431","name":"DEEPAK M","studentMob":"9342633835","fatherMob":"9786781061","collegeID":"ca255113431@bhc.edu.in","partOne":"Tamil","dob":"23-05-2007"},
-  {"id":"32","rollNo":"255113432","name":"DEEPAK RAJ B","studentMob":"8148947322","fatherMob":"9677357503","collegeID":"ca255113432@bhc.edu.in","partOne":"Tamil","dob":"25-06-2008"},
-  {"id":"33","rollNo":"255113433","name":"DHAANESHWAR S","studentMob":"9487350101","fatherMob":"9080073826","collegeID":"ca255113433@bhc.edu.in","partOne":"Tamil","dob":"23-10-2007"},
-  {"id":"34","rollNo":"255113434","name":"DHANUSH S","studentMob":"9345954017","fatherMob":"9787444603","collegeID":"ca255113434@bhc.edu.in","partOne":"Tamil","dob":"13-08-2008"},
-  {"id":"35","rollNo":"255113435","name":"DHARUN SRIRAM R V","studentMob":"7200555869","fatherMob":"7200555869","collegeID":"ca255113435@bhc.edu.in","partOne":"Tamil","dob":"19-02-2007"},
-  {"id":"36","rollNo":"255113436","name":"DHARUNKUMAR N","studentMob":"7358966274","fatherMob":"7094380076","collegeID":"ca255113436@bhc.edu.in","partOne":"Tamil","dob":"25-08-2007"},
-  {"id":"37","rollNo":"255113437","name":"DHINESH M","studentMob":"9715458904","fatherMob":"9715458904","collegeID":"ca255113437@bhc.edu.in","partOne":"Tamil","dob":"19-11-2007"},
-  {"id":"38","rollNo":"255113438","name":"DINESH S","studentMob":"6374811302","fatherMob":"8668164482","collegeID":"ca255113438@bhc.edu.in","partOne":"Tamil","dob":"31-03-2007"},
-  {"id":"39","rollNo":"255113439","name":"EBIN SAM S","studentMob":"9773947892","fatherMob":"9773947892","collegeID":"ca255113439@bhc.edu.in","partOne":"Tamil","dob":"15-08-2007"},
-  {"id":"40","rollNo":"255113440","name":"EDWIN VASANTH V","studentMob":"9865413998","fatherMob":"9385954989","collegeID":"ca255113440@bhc.edu.in","partOne":"Tamil","dob":"18-03-2007"},
-  {"id":"41","rollNo":"255113441","name":"GEOFFREY PAUL DANIEL P","studentMob":"9677729944","fatherMob":"9367652030","collegeID":"ca255113441@bhc.edu.in","partOne":"Tamil","dob":"01-07-2007"},
-  {"id":"42","rollNo":"255113442","name":"GODSON S","studentMob":"9688757626","fatherMob":"9688757626","collegeID":"ca255113442@bhc.edu.in","partOne":"Tamil","dob":"08-07-2007"},
-  {"id":"43","rollNo":"255113443","name":"GOKILAN A","studentMob":"7708310348","fatherMob":"7418168126","collegeID":"ca255113443@bhc.edu.in","partOne":"Tamil","dob":"22-07-2008"},
-  {"id":"44","rollNo":"255113444","name":"GOKUL GANESH S","studentMob":"8056358247","fatherMob":"8056358247","collegeID":"ca255113444@bhc.edu.in","partOne":"Tamil","dob":"28-08-2007"},
-  {"id":"45","rollNo":"255113445","name":"GOKUL T","studentMob":"9943815072","fatherMob":"9943815072","collegeID":"ca255113445@bhc.edu.in","partOne":"Tamil","dob":"20-03-2008"},
-  {"id":"46","rollNo":"255113446","name":"GOVARTHANAN S","studentMob":"8667223734","fatherMob":"9843133284","collegeID":"ca255113446@bhc.edu.in","partOne":"Tamil","dob":"14-10-2006"},
-  {"id":"47","rollNo":"255113447","name":"GOWTHAM X","studentMob":"9942667483","fatherMob":"7092453118","collegeID":"ca255113447@bhc.edu.in","partOne":"Tamil","dob":"10-12-2007"},
-  {"id":"48","rollNo":"255113448","name":"GURU MATHESH G","studentMob":"9360860993","fatherMob":"9360860993","collegeID":"ca255113448@bhc.edu.in","partOne":"Tamil","dob":"21-08-2007"},
-  {"id":"49","rollNo":"255113449","name":"HAEMJEYANT A S","studentMob":"9360127575","fatherMob":"9445584444","collegeID":"ca255113449@bhc.edu.in","partOne":"Tamil","dob":"17-03-2008"},
-  {"id":"50","rollNo":"255113450","name":"HAJANAVAS N","studentMob":"8838799947","fatherMob":"9976286659","collegeID":"ca255113450@bhc.edu.in","partOne":"Tamil","dob":"08-09-2006"},
-  {"id":"51","rollNo":"255113451","name":"HARI CHARAN S","studentMob":"8525084250","fatherMob":"9500419303","collegeID":"ca255113451@bhc.edu.in","partOne":"Tamil","dob":"27-04-2008"},
-  {"id":"52","rollNo":"255113452","name":"HARI SANTHOSH B","studentMob":"9080894772","fatherMob":"7010423483","collegeID":"ca255113452@bhc.edu.in","partOne":"Tamil","dob":"20-02-2008"},
-  {"id":"53","rollNo":"255113453","name":"HARIHARAN D","studentMob":"7010385601","fatherMob":"9159499907","collegeID":"ca255113453@bhc.edu.in","partOne":"Tamil","dob":"30-11-2007"},
-  {"id":"54","rollNo":"255113454","name":"HARIHARAN K","studentMob":"9566293872","fatherMob":"9566293872","collegeID":"ca255113454@bhc.edu.in","partOne":"Tamil","dob":"04-07-2008"},
-  {"id":"55","rollNo":"255113455","name":"HARIHARAN K P","studentMob":"9994729118","fatherMob":"9952324044","collegeID":"ca255113455@bhc.edu.in","partOne":"Tamil","dob":"02-10-2007"},
-  {"id":"56","rollNo":"255113456","name":"HARIHARAN P","studentMob":"9655835457","fatherMob":"9655835457","collegeID":"ca255113456@bhc.edu.in","partOne":"Tamil","dob":"13-04-2007"},
-  {"id":"57","rollNo":"255113457","name":"HARIHARAN S","studentMob":"7502089681","fatherMob":"7502089681","collegeID":"ca255113457@bhc.edu.in","partOne":"Tamil","dob":"12-04-2008"},
-  {"id":"58","rollNo":"255113458","name":"HARIHARAN S","studentMob":"9003850934","fatherMob":"9345025881","collegeID":"ca255113458@bhc.edu.in","partOne":"Tamil","dob":"05-06-2008"},
-  {"id":"59","rollNo":"255113459","name":"HARIHARAN S","studentMob":"9750862195","fatherMob":"9750862195","collegeID":"ca255113459@bhc.edu.in","partOne":"Tamil","dob":"25-12-2007"},
-  {"id":"60","rollNo":"255113460","name":"HARIHARAN T","studentMob":"8270546525","fatherMob":"9942208437","collegeID":"ca255113460@bhc.edu.in","partOne":"Tamil","dob":"31-10-2007"},
-  {"id":"61","rollNo":"255113461","name":"HARIKRISHNAN S","studentMob":"7502089681","fatherMob":"7502089681","collegeID":"ca255113461@bhc.edu.in","partOne":"Tamil","dob":"12-04-2008"},
-  {"id":"62","rollNo":"255113462","name":"HARISH K","studentMob":"8838514970","fatherMob":"8838514970","collegeID":"ca255113462@bhc.edu.in","partOne":"Tamil","dob":"17-03-2008"},
-  {"id":"63","rollNo":"255113463","name":"HARISH M","studentMob":"9384538722","fatherMob":"8220749060","collegeID":"ca255113463@bhc.edu.in","partOne":"Tamil","dob":"07-09-2007"},
-  {"id":"64","rollNo":"255113464","name":"HEMAVARSHAN S","studentMob":"9043522549","fatherMob":"9345122702","collegeID":"ca255113464@bhc.edu.in","partOne":"Tamil","dob":"23-01-2008"},
-  {"id":"65","rollNo":"255113465","name":"HEMNATH R","studentMob":"9087157015","fatherMob":"7094307015","collegeID":"ca255113465@bhc.edu.in","partOne":"Tamil","dob":"11-11-2006"},
-  {"id":"66","rollNo":"255113466","name":"HUTSUN D","studentMob":"9750983936","fatherMob":"9751455492","collegeID":"ca255113466@bhc.edu.in","partOne":"Tamil","dob":"03-04-2008"},
-  {"id":"67","rollNo":"255113467","name":"IBRAHIM JAMEEL K","studentMob":"8438520323","fatherMob":"9944572571","collegeID":"ca255113467@bhc.edu.in","partOne":"Hindi","dob":"03-01-2003"},
-  {"id":"68","rollNo":"255113468","name":"IYAPPAN R","studentMob":"6379205808","fatherMob":"9659765959","collegeID":"ca255113468@bhc.edu.in","partOne":"Tamil","dob":"15-02-2007"},
-  {"id":"69","rollNo":"255113469","name":"IYYAPPAN M","studentMob":"6380661507","fatherMob":"9524151857","collegeID":"ca255113469@bhc.edu.in","partOne":"Tamil","dob":"28-02-2008"},
-  {"id":"70","rollNo":"255113470","name":"JAGAN S","studentMob":"8525825510","fatherMob":"6383050450","collegeID":"ca255113470@bhc.edu.in","partOne":"Tamil","dob":"09-01-2008"},
-  {"id":"71","rollNo":"255113471","name":"XX","studentMob":"XX","fatherMob":"XX","collegeID":"XX","partOne":"XX","dob":"XX"},
-  {"id":"72","rollNo":"255113472","name":"BOOPALAN G","studentMob":"8610313112","fatherMob":"6374764105","collegeID":"ca255113472@bhc.edu.in","partOne":"Tamil","dob":"14-12-2006"},
-  {"id":"73","rollNo":"255113473","name":"AKHILAN P","studentMob":"7824994757","fatherMob":"9790453423","collegeID":"ca255113473@bhc.edu.in","partOne":"Tamil","dob":"19-06-2007"},
-  {"id":"74","rollNo":"255113474","name":"ABDUL LADEEF J","studentMob":"8220976978","fatherMob":"7448731427","collegeID":"ca255113474@bhc.edu.in","partOne":"Tamil","dob":"27-01-2007"},
-  {"id":"75","rollNo":"255113638","name":"SURENDAR A","studentMob":"9751744271","fatherMob":"6383414729","collegeID":"ca255113638@bhc.edu.in","partOne":"Tamil","dob":"01-06-2008"}
-
-];
 const XX_IDS = ["23","71"];
 
 const LS_THEME    = 'bca_theme';
 const LS_CLASS    = 'bca_class_name';
-const LS_STUDENTS = 'bca_students_db';
-const LS_XXINIT   = 'bca_xx_init';
 
 const DEFAULT_CLASS = '2 B.C.A. D';
 const DEFAULT_SUBJECTS = [
@@ -190,15 +110,27 @@ export default function App(){
     showToast('Class name updated');
   }
 
-  /* ---------- student db ---------- */
-  const [studentDb, setStudentDb] = useState(function(){
-    const raw = localStorage.getItem(LS_STUDENTS);
-    const fallback = BASE_STUDENTS.map(function(s){ return { ...s }; });
-    return raw ? safeParse(raw, fallback) : fallback;
-  });
-  useEffect(function(){
-    try{ localStorage.setItem(LS_STUDENTS, JSON.stringify(studentDb)); }catch(e){ /* noop */ }
-  }, [studentDb]);
+  /* ---------- student db ===== NOW FETCHED LIVE FROM SUPABASE ('students' table) ===== */
+  const [studentDb, setStudentDb] = useState([]);
+  const fetchStudents = useCallback(async function(){
+    try{
+      const { data, error } = await supabase.from('students').select('*').order('id', { ascending:true });
+      if(error){ console.error(error); showToast('Could not load student database', true); return; }
+      const mapped = (data||[]).map(function(row){
+        return {
+          id: String(row.id),
+          rollNo: row.roll_no ?? row.rollNo ?? '',
+          name: row.name ?? '',
+          studentMob: row.student_mob ?? row.studentMob ?? '',
+          fatherMob: row.father_mob ?? row.fatherMob ?? '',
+          collegeID: row.college_id ?? row.collegeID ?? '',
+          partOne: row.part_one ?? row.partOne ?? '',
+          dob: row.dob ?? ''
+        };
+      });
+      setStudentDb(mapped);
+    }catch(e){ console.error(e); showToast('Could not load student database', true); }
+  }, []);
   function updateStudentById(id, updates){
     setStudentDb(function(db){ return db.map(function(s){ return s.id===id ? { ...s, ...updates } : s; }); });
   }
@@ -388,19 +320,19 @@ export default function App(){
 
   /* ---------- initial boot ---------- */
   useEffect(function(){
-    fetchSubjects(); fetchAdmins(); fetchTimetable(); fetchCurrentDayOrder();
+    fetchSubjects(); fetchAdmins(); fetchTimetable(); fetchCurrentDayOrder(); fetchStudents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(function(){ fetchLeftStudents(); }, [fetchLeftStudents]);
   useEffect(function(){
     (async function(){
-      if(localStorage.getItem(LS_XXINIT)) return;
+      if(localStorage.getItem('bca_xx_init')) return;
       try{
         for(const id of XX_IDS){
           const s = studentDb.find(function(x){ return x.id===id; });
           if(s){ await supabase.from('left_students').upsert({ roll_no: s.rollNo }); }
         }
-        localStorage.setItem(LS_XXINIT, '1');
+        localStorage.setItem('bca_xx_init', '1');
         fetchLeftStudents();
       }catch(e){ console.error(e); }
     })();
