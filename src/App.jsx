@@ -113,23 +113,38 @@ export default function App(){
   /* ---------- student db ===== NOW FETCHED LIVE FROM SUPABASE ('students' table) ===== */
   const [studentDb, setStudentDb] = useState([]);
   const fetchStudents = useCallback(async function(){
-    try{
-      const { data, error } = await supabase.from('students').select('*').order('id', { ascending:true });
-      if(error){ console.error(error); showToast('Could not load student database', true); return; }
-      const mapped = (data||[]).map(function(row){
+    try {
+      // 1. Order by roll_number so the grid displays sequentially
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .order('roll_number', { ascending: true });
+
+      if (error) { 
+        console.error(error); 
+        showToast('Could not load student database', true); 
+        return; 
+      }
+
+      // 2. Map the correct database columns
+      const mapped = (data || []).map(function(row) {
         return {
           id: String(row.id),
-          rollNo: row.roll_number ?? row.roll_no ?? row.rollNo ?? '',
-          name: row.student_name ?? row.name ?? '',
-          studentMob: row.student_mob ?? row.studentMob ?? '',
-          fatherMob: row.father_mob ?? row.fatherMob ?? '',
-          collegeID: row.college_id ?? row.collegeID ?? '',
-          partOne: row.part_one ?? row.partOne ?? '',
-          dob: row.dob ?? ''
+          rollNo: row.roll_number || row.roll_no || row.rollNo || '', 
+          name: row.student_name || row.name || '',
+          studentMob: row.student_mob || row.studentMob || '',
+          fatherMob: row.father_mob || row.fatherMob || '',
+          collegeID: row.college_id || row.collegeID || '',
+          partOne: row.part_one || row.partOne || '',
+          dob: row.dob || ''
         };
       });
+
       setStudentDb(mapped);
-    }catch(e){ console.error(e); showToast('Could not load student database', true); }
+    } catch(e) { 
+      console.error(e); 
+      showToast('Could not load student database', true); 
+    }
   }, []);
   function updateStudentById(id, updates){
     setStudentDb(function(db){ return db.map(function(s){ return s.id===id ? { ...s, ...updates } : s; }); });
