@@ -2108,24 +2108,52 @@ export default function App(){
                         <span><b>{presentCount!=null?presentCount:'—'}</b> present</span>
                       </div>
                       {isOpen && (
-                        <div className="history-breakdown" style={{marginTop:8,borderTop:'1px solid var(--border)',paddingTop:8}}>
-                          {absentCount===0 && <div className="empty-state">No absentees recorded for this date.</div>}
-                          {absentCount>0 && hourWiseBreakdown.map(function(hb){
-                            return (
-                              <div key={hb.hour} style={{marginBottom:10}}>
-                                <div className="manage-row-sub" style={{fontWeight:700,marginBottom:4}}>
-                                  Hour {hb.hour}{hb.subject ? ' — '+hb.subject : ''} {hb.absentees.length===0 ? (hb.hasData ? '— No absentees' : '— Not recorded') : '— '+hb.absentees.length+' absent'}
-                                </div>
-                                {hb.absentees.map(function(a){
-                                  return (
-                                    <div key={a.rollNo} className="result-row">
-                                      <span className="result-row-subject">{a.rollNo} - {a.name}</span>
+                        <div className="history-breakdown" style={{marginTop:12,borderTop:'1px solid var(--border)',paddingTop:12}}>
+                          <div style={{display:'grid',gap:10}}>
+                            {hourWiseBreakdown.map(function(hb){
+                              const hourLabel = 'Hour '+hb.hour + (hb.subject ? ' — '+hb.subject : '');
+                              const absentLabel = hb.absentees.length===0 ? 'No absentees recorded' : hb.absentees.length+' absentee'+(hb.absentees.length===1 ? '' : 's');
+                              return (
+                                <div key={hb.hour} style={{border:'1px solid var(--border)',borderRadius:12,background:'#f8fafc',padding:12}}>
+                                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:8}}>
+                                    <div>
+                                      <div style={{fontWeight:800,color:'#1e3a8a',marginBottom:4}}>{hourLabel}</div>
+                                      <div style={{fontSize:12,color:'#64748b'}}>{hb.hasData ? absentLabel : 'Hour '+hb.hour+' — Not recorded'}</div>
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })}
+                                    {hb.hasData && (
+                                      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                                        <button type="button" onClick={function(e){ e.stopPropagation(); handleCopyHistoryMessage(buildHistoryMessage(dateEntry)); }}>Copy Message</button>
+                                        <button type="button" className="danger" onClick={function(e){ e.stopPropagation(); handleDeleteHistoryEntry(dateEntry.date); }}>Delete</button>
+                                        <button type="button" onClick={function(e){ e.stopPropagation(); handleExportPdf(); }}>Export PDF</button>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {hb.hasData ? (
+                                    hb.absentees.length===0 ? (
+                                      <div className="empty-state" style={{margin:0,padding:0,border:'none',background:'transparent'}}>
+                                        No absentees recorded for this hour.
+                                      </div>
+                                    ) : (
+                                      <div style={{display:'grid',gap:6}}>
+                                        {hb.absentees.map(function(a){
+                                          return (
+                                            <div key={a.rollNo} className="result-row" style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:10,padding:'8px 10px'}}>
+                                              <span className="result-row-subject">{a.rollNo} - {a.name}</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )
+                                  ) : (
+                                    <div style={{display:'inline-flex',alignItems:'center',padding:'4px 10px',borderRadius:999,background:'#e2e8f0',color:'#64748b',fontSize:12,fontWeight:700}}>
+                                      Hour {hb.hour} — Not recorded
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                       <div className="history-actions">
