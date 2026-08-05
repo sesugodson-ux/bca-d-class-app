@@ -121,6 +121,28 @@ function credentialsMatch(storedRoll, storedDob, inputRoll, inputDob){
   return rollOk && dobOk;
 }
 
+/* ===== attendance_history helpers (row-per-hour schema) =====
+   Each row in Supabase now represents ONE hour of ONE date:
+   { id, date, hour, subject_name, class_name, absent_rolls[], total_enrolled,
+     total_left, total_active, total_absent, total_present, message, saved_at }
+
+   The UI still needs to show a day at a glance, so we group the flat rows
+   fetched from Supabase into per-date buckets purely for rendering. */
+function groupHistoryByDate(rows){
+  const map = {};
+  rows.forEach(function(row){
+    if(!map[row.date]){
+      map[row.date] = { date: row.date, class_name: row.class_name, total_active: row.total_active, rows: [] };
+    }
+    map[row.date].rows.push(row);
+    if(row.total_active!=null) map[row.date].total_active = row.total_active;
+    if(row.class_name) map[row.date].class_name = row.class_name;
+  });
+  return Object.keys(map)
+    .map(function(d){ return map[d]; })
+    .sort(function(a,b){ return a.date < b.date ? 1 : -1; });
+}
+
 const STUDY_TABLE = 'study_materials';
 const STUDY_BUCKET = 'materials';
 
@@ -177,7 +199,6 @@ export default function App(){
   const [studentDb, setStudentDb] = useState([]);
   const fetchStudents = useCallback(async function(){
     try {
-      // Order by roll_number so the grid displays sequentially from the DB too
       const { data, error } = await supabase
         .from('students')
         .select('*')
@@ -189,9 +210,6 @@ export default function App(){
         return;
       }
 
-      // Robust column mapping: tries every reasonable snake_case / camelCase
-      // variant that Supabase might return, trims strings, and never leaves
-      // a field silently blank just because one particular alias was empty.
       function pick(row, keys){
         for(let i=0;i<keys.length;i++){
           const v = row[keys[i]];
@@ -301,10 +319,6 @@ export default function App(){
       await fetchAdmins(); return true;
     }catch(e){ showToast('Could not remove admin', true); return false; }
   }
-  /* Verifies Admin Roll Number + DOB. Fetches the (small) admins table and
-     compares flexibly with credentialsMatch() rather than relying on a
-     strict server-side .eq() match, so formatting differences (whitespace,
-     ISO vs DD-MM-YYYY dates) don't produce false "invalid" results. */
   async function verifyAdmin(rollNo, dob){
     try{
       const { data, error } = await supabase.from('admins').select('rollNo,dob');
@@ -377,74 +391,58 @@ export default function App(){
     }catch(e){ console.error(e); showToast('Could not save timetable slot', true); }
   }
 
-  /* ---------- attendance history (date-wise, hour-grouped) ---------- */
+  /* ---------- attendance history (row-per-hour, grouped by date for display) ---------- */
   const [history, setHistory] = useState([]);
-  const [expandedHistoryId, setExpandedHistoryId] = useState(null);
+  const [expandedHistoryDate, setExpandedHistoryDate] = useState(null);
   const fetchHistory = useCallback(async function(){
     try{
-      const { data, error } = await supabase.from('attendance_history').select('*').order('date',{ascending:false});
+      const { data, error } = await supabase
+        .from('attendance_history')
+        .select('*')
+        .order('date', { ascending:false })
+        .order('hour', { ascending:true });
       if(error){ console.error(error); return; }
       setHistory(data||[]);
     }catch(e){ console.error(e); }
   }, []);
-  function toggleHistoryExpand(id){
-    setExpandedHistoryId(function(cur){ return cur === id ? null : id; });
+  function toggleHistoryExpand(date){
+    setExpandedHistoryDate(function(cur){ return cur === date ? null : date; });
   }
+
+  const groupedHistory = useMemo(function(){ return groupHistoryByDate(history); }, [history]);
 
   /* ---------- student-specific attendance history search (Admin Dashboard) ---------- */
   const [historySearchRoll, setHistorySearchRoll] = useState('');
+
   /* Builds a per-date list of which hours a given roll number was absent in,
-     across every saved history entry, sorted by date (most recent first —
-     matching the order "history" is already fetched in). Dates where the
+     scanning the flat row-per-hour history rows directly. Dates where the
      student had no absences at all are skipped. */
   function getStudentHistoryRows(rollNo){
     const rollQ = normalizeRollNo(rollNo);
     if(!rollQ) return [];
-    const rows = [];
-    history.forEach(function(entry){
-      const hoursMap = normalizeHoursMap(entry);
-      const hoursAbsent = HOURS.filter(function(h){
-        return (hoursMap[String(h)]||[]).some(function(r){ return normalizeRollNo(r)===rollQ; });
-      });
-      if(hoursAbsent.length>0){
-        rows.push({
-          date: entry.date,
-          hoursAbsent: hoursAbsent,
-          isFullDay: hoursAbsent.length >= HOURS.length
-        });
-      }
+    const byDate = {};
+    history.forEach(function(row){
+      const isAbsent = (row.absent_rolls||[]).some(function(r){ return normalizeRollNo(r)===rollQ; });
+      if(!isAbsent) return;
+      if(!byDate[row.date]) byDate[row.date] = [];
+      byDate[row.date].push(row.hour);
     });
-    return rows;
-  }
-
-  /* Returns a normalized hours map { "1": [rollNo,...], ..., "5": [...] } for
-     both new date-grouped rows (entry.hours) and legacy per-submission rows
-     (entry.hour + entry.absent_rolls), so old data keeps working. */
-  function normalizeHoursMap(entry){
-    const map = {};
-    HOURS.forEach(function(h){ map[String(h)] = []; });
-    if(entry && entry.hours && typeof entry.hours === 'object'){
-      HOURS.forEach(function(h){
-        const key = String(h);
-        map[key] = Array.isArray(entry.hours[key]) ? entry.hours[key] : [];
+    return Object.keys(byDate)
+      .sort(function(a,b){ return a<b ? 1 : -1; })
+      .map(function(date){
+        const hoursAbsent = byDate[date].slice().sort(function(a,b){ return a-b; });
+        return { date: date, hoursAbsent: hoursAbsent, isFullDay: hoursAbsent.length >= HOURS.length };
       });
-    } else if(entry && entry.hour){
-      const key = String(entry.hour);
-      if(map[key] !== undefined){ map[key] = entry.absent_rolls || []; }
-    }
-    return map;
   }
 
-  /* Per-student breakdown for a single date entry: which hours they were
+  /* Per-student breakdown for a single date's rows: which hours they were
      absent in, and whether that adds up to a full-day absence. */
-  function getDateAbsenteeBreakdown(entry){
-    const hoursMap = normalizeHoursMap(entry);
+  function getDateAbsenteeBreakdown(dateRows){
     const rollHourMap = {};
-    HOURS.forEach(function(h){
-      const rolls = hoursMap[String(h)] || [];
-      rolls.forEach(function(rollNo){
+    dateRows.forEach(function(row){
+      (row.absent_rolls||[]).forEach(function(rollNo){
         if(!rollHourMap[rollNo]) rollHourMap[rollNo] = [];
-        rollHourMap[rollNo].push(h);
+        rollHourMap[rollNo].push(row.hour);
       });
     });
     const totalHours = HOURS.length;
@@ -464,27 +462,26 @@ export default function App(){
     return breakdown;
   }
 
-  /* Hour-wise breakdown for a single date entry: an ordered array (Hour 1 → 5)
-     where each item lists the students absent in that hour, sorted by roll
-     number. Used to render the "View breakdown" panel in a clean, sequential
-     hour-by-hour layout instead of a flat student list. */
-  function getDateHourWiseBreakdown(entry){
-    const hoursMap = normalizeHoursMap(entry);
+  /* Hour-wise breakdown for a single date's rows: an ordered array (Hour 1 → 5)
+     where each item lists the students absent in that hour (and the subject
+     taught, if recorded), sorted by roll number. */
+  function getDateHourWiseBreakdown(dateRows){
     return HOURS.map(function(h){
-      const rolls = (hoursMap[String(h)] || []).slice();
+      const row = dateRows.find(function(r){ return r.hour === h; });
+      const rolls = row ? (row.absent_rolls||[]).slice() : [];
       const students = rolls.map(function(rollNo){
         const student = studentDb.find(function(s){ return s.rollNo === rollNo; });
         return { rollNo: rollNo, name: student ? student.name : rollNo };
       }).sort(function(a,b){ return numericRollCompare(a.rollNo, b.rollNo); });
-      return { hour: h, absentees: students };
+      return { hour: h, absentees: students, subject: row ? row.subject_name : null, hasData: !!row };
     });
   }
 
-  function buildHistoryMessage(entry){
-    const niceDate = formatNiceDate(entry.date);
-    const breakdown = getDateAbsenteeBreakdown(entry);
+  function buildHistoryMessage(dateEntry){
+    const niceDate = formatNiceDate(dateEntry.date);
+    const breakdown = getDateAbsenteeBreakdown(dateEntry.rows);
     const lines = [];
-    lines.push('Class: '+(entry.class_name||className));
+    lines.push('Class: '+(dateEntry.class_name||className));
     lines.push('----------------------------------------');
     lines.push('📅 Date: '+niceDate);
     lines.push('----------------------------------------');
@@ -499,20 +496,14 @@ export default function App(){
     return lines.join('\n');
   }
 
+  /* Attendance % now simply treats every saved row as one conducted hour. */
   function getAttendancePercent(rollNo){
     if(history.length===0) return null;
     let conducted=0, present=0;
-    history.forEach(function(entry){
-      const hoursMap = normalizeHoursMap(entry);
-      HOURS.forEach(function(h){
-        const rolls = hoursMap[String(h)] || [];
-        // Only count an hour as "conducted" if that hour slot has any data
-        // recorded for this date (i.e. attendance was actually taken for it).
-        if(entry.hours ? (entry.hours[String(h)] !== undefined) : (String(entry.hour)===String(h))){
-          conducted += 1;
-          if(rolls.indexOf(rollNo)===-1) present += 1;
-        }
-      });
+    history.forEach(function(row){
+      conducted += 1;
+      const rolls = row.absent_rolls || [];
+      if(rolls.indexOf(rollNo)===-1) present += 1;
     });
     if(conducted===0) return null;
     return Math.round((present/conducted)*1000)/10;
@@ -616,9 +607,6 @@ export default function App(){
     return studentDb.filter(function(s){ return s.name!=='XX' && leftIds.indexOf(s.id)===-1; });
   }, [studentDb, leftIds]);
 
-  /* Grid shows every student (including XX placeholders) so Left / XX rows
-     stay visible but shaded+disabled, rather than disappearing entirely.
-     Sorted with a strict numeric comparator on roll number. */
   const gridStudents = useMemo(function(){
     return studentDb
       .slice()
@@ -667,50 +655,42 @@ export default function App(){
     return ok;
   }
 
-  /* Saves (or merges) attendance for the selected hour into the date-wise
-     history record. If a record already exists for dateVal, only that hour's
-     slot in the "hours" JSON is overwritten — the other hours already saved
-     for that date are preserved. Uses upsert on the unique "date" column.
+  /* Saves attendance as a single clean row keyed by (date, hour) into
+     attendance_history, matching the row-per-hour schema:
+     date, hour, subject_name, class_name, absent_rolls, strength counts,
+     message, saved_at. Uses upsert with onConflict:'date,hour' so that
+     re-submitting the same date+hour combination UPDATES the existing row
+     instead of creating a duplicate. Requires a unique constraint on
+     (date, hour) in Supabase:
+       alter table attendance_history add constraint attendance_history_date_hour_key unique (date, hour);
      Returns true/false so callers (e.g. the WhatsApp send handler) know
      whether the save actually succeeded. Does not show its own toast on
      success — the caller decides how to report the combined outcome. */
   async function saveAttendanceToHistory(){
-    const hourKey = String(hourVal);
+    const hour = parseInt(hourVal, 10);
     const absentRolls = summary.absentList.map(function(s){ return s.rollNo; });
 
+    const record = {
+      date: dateVal,
+      hour: hour,
+      subject_name: subjectVal,
+      class_name: className,
+      absent_rolls: absentRolls,
+      total_enrolled: summary.totalEnrolled,
+      total_left: summary.totalLeft,
+      total_active: summary.totalActive,
+      total_absent: summary.totalAbsent,
+      total_present: summary.totalPresent,
+      message: buildRawMessage(),
+      saved_at: new Date().toISOString()
+    };
+
     try{
-      const { data: existing, error: fetchError } = await supabase
+      const { error } = await supabase
         .from('attendance_history')
-        .select('*')
-        .eq('date', dateVal)
-        .limit(1);
+        .upsert(record, { onConflict: 'date,hour' });
 
-      if(fetchError){ console.error(fetchError); showToast('Could not save to history', true); return false; }
-
-      const existingRow = existing && existing.length > 0 ? existing[0] : null;
-
-      let hoursMap = existingRow && existingRow.hours ? { ...existingRow.hours } : {};
-      HOURS.forEach(function(h){
-        const key = String(h);
-        if(!Array.isArray(hoursMap[key])) hoursMap[key] = hoursMap[key] || [];
-      });
-      hoursMap[hourKey] = absentRolls;
-
-      const record = {
-        date: dateVal,
-        class_name: className,
-        hours: hoursMap,
-        total_enrolled: summary.totalEnrolled,
-        total_left: summary.totalLeft,
-        total_active: summary.totalActive,
-        saved_at: new Date().toISOString()
-      };
-
-      const { error: upsertError } = await supabase
-        .from('attendance_history')
-        .upsert(record, { onConflict: 'date' });
-
-      if(upsertError){ console.error(upsertError); showToast('Could not save to history', true); return false; }
+      if(error){ console.error(error); showToast('Could not save to history', true); return false; }
 
       fetchHistory();
       return true;
@@ -821,10 +801,6 @@ export default function App(){
     navTo('semesterLogin');
   }
 
-  /* Looks up a student by Roll Number + DOB against the already-loaded
-     studentDb, using credentialsMatch() for flexible/robust comparison
-     (handles whitespace, case, and DOB format differences between what's
-     stored in Supabase and what the student types in). */
   function findStudentByCredentials(rollNo, dob){
     return studentDb.find(function(s){
       return s.name!=='XX' && credentialsMatch(s.rollNo, s.dob, rollNo, dob);
@@ -843,8 +819,6 @@ export default function App(){
         setCurrentStudyRollNo(rollNo);
         setCurrentStudyIsAdmin(true);
       } else {
-        // Ensure we have the latest student roster before matching, in case
-        // this is the first login attempt right after the app booted.
         if(studentDb.length===0){ await fetchStudents(); }
         const student = findStudentByCredentials(rollNo, dob);
         if(!student){ triggerShake('studyLoginCard'); showToast('Invalid Roll Number or Date of Birth', true); setStudyLoginBusy(false); return; }
@@ -1118,24 +1092,24 @@ export default function App(){
     await deleteAdmin(rollNo);
   }
 
+  /* ---- Global CSV export (grouped by date) ---- */
   function handleExportCsv(){
     if(history.length===0){ showToast('No history to export', true); return; }
+    const grouped = groupHistoryByDate(history);
     const headers = ['Date','Class','Hours With Absentees','Total Strength','Absent Count','Present Count'];
     const rows = [headers.map(escapeCsv).join(',')];
-    history.forEach(function(entry){
-      const hoursMap = normalizeHoursMap(entry);
+    grouped.forEach(function(dateEntry){
       const allRolls = new Set();
       const activeHours = [];
-      HOURS.forEach(function(h){
-        const rolls = hoursMap[String(h)] || [];
-        if(rolls.length>0) activeHours.push(h);
-        rolls.forEach(function(r){ allRolls.add(r); });
+      dateEntry.rows.forEach(function(row){
+        if((row.absent_rolls||[]).length>0) activeHours.push(row.hour);
+        (row.absent_rolls||[]).forEach(function(r){ allRolls.add(r); });
       });
-      const totalActive = entry.total_active!=null ? entry.total_active : '';
+      const totalActive = dateEntry.total_active!=null ? dateEntry.total_active : '';
       const absentCount = allRolls.size;
-      const presentCount = entry.total_active!=null ? Math.max(entry.total_active-absentCount,0) : '';
+      const presentCount = dateEntry.total_active!=null ? Math.max(dateEntry.total_active-absentCount,0) : '';
       rows.push([
-        entry.date||'', entry.class_name||'', activeHours.join('; '),
+        dateEntry.date||'', dateEntry.class_name||'', activeHours.join('; '),
         totalActive, absentCount, presentCount
       ].map(escapeCsv).join(','));
     });
@@ -1150,8 +1124,7 @@ export default function App(){
   }
 
   /* Shared print-window opener: writes printHtml into a popup and triggers
-     the browser print dialog so the admin can "Save as PDF". Used by both
-     the global history export and the per-student export below. */
+     the browser print dialog so the admin can "Save as PDF". */
   function openPrintWindow(printHtml){
     const printWindow = window.open('', '_blank', 'width=900,height=700');
     if(!printWindow){
@@ -1190,45 +1163,43 @@ export default function App(){
     + '.student-info td.label{background:#f7f7f7;font-weight:600;width:32%;}'
     + '@media print{body{margin:12mm;}.footer{position:fixed;bottom:8mm;left:0;right:0;}}';
 
-  /* Redesigned global attendance-history PDF export: a neat, structured,
-     color-coded table (green = Present-heavy day, red = Full Day Absent
-     count present, amber = partial/hour-specific absences) covering every
-     saved date. */
+  /* Global attendance-history PDF export: a neat, structured, color-coded
+     table (green = Present-heavy day, red = Full Day Absent count present,
+     amber = partial/hour-specific absences) covering every saved date.
+     Rows are grouped from the flat row-per-hour data first. */
   function handleExportPdf(){
     if(history.length===0){ showToast('No history to export', true); return; }
+    const grouped = groupHistoryByDate(history);
 
-    function absentCount(entry){
-      const hoursMap = normalizeHoursMap(entry);
+    function absentCount(dateRows){
       const rolls = new Set();
-      HOURS.forEach(function(h){ (hoursMap[String(h)]||[]).forEach(function(r){ rolls.add(r); }); });
+      dateRows.forEach(function(row){ (row.absent_rolls||[]).forEach(function(r){ rolls.add(r); }); });
       return rolls.size;
     }
-    function fullDayAbsentCount(entry){
-      const breakdown = getDateAbsenteeBreakdown(entry);
-      return breakdown.filter(function(b){ return b.isFullDay; }).length;
+    function fullDayAbsentCount(dateRows){
+      return getDateAbsenteeBreakdown(dateRows).filter(function(b){ return b.isFullDay; }).length;
     }
-    function presentCount(entry){
-      const strength = entry.total_active!=null ? entry.total_active : 0;
-      return Math.max(strength - absentCount(entry), 0);
+    function presentCount(dateEntry){
+      const strength = dateEntry.total_active!=null ? dateEntry.total_active : 0;
+      return Math.max(strength - absentCount(dateEntry.rows), 0);
     }
-    function subjectOrHoursLabel(entry){
-      const hoursMap = normalizeHoursMap(entry);
-      const activeHours = HOURS.filter(function(h){ return (hoursMap[String(h)]||[]).length > 0; });
+    function subjectOrHoursLabel(dateRows){
+      const activeHours = dateRows.filter(function(r){ return (r.absent_rolls||[]).length > 0; }).map(function(r){ return r.hour; });
       return activeHours.length ? 'Hours: '+activeHours.join(', ') : 'All hours — no absentees';
     }
 
-    const rowsHtml = history.map(function(entry){
-      const ac = absentCount(entry);
-      const fullDay = fullDayAbsentCount(entry);
-      const pc = presentCount(entry);
+    const rowsHtml = grouped.map(function(dateEntry){
+      const ac = absentCount(dateEntry.rows);
+      const fullDay = fullDayAbsentCount(dateEntry.rows);
+      const pc = presentCount(dateEntry);
       const pillCls = ac===0 ? 'pill-present' : (fullDay>0 ? 'pill-absent' : 'pill-partial');
       const pillLabel = ac===0 ? 'All Present' : (fullDay>0 ? fullDay+' Full-Day Absent' : 'Partial Absences');
       return (
         '<tr>'
-        + '<td>'+escapeHtml(formatNiceDate(entry.date))+'</td>'
-        + '<td>'+escapeHtml(entry.class_name||className)+'</td>'
-        + '<td>'+escapeHtml(subjectOrHoursLabel(entry))+'</td>'
-        + '<td class="num">'+escapeHtml(entry.total_active!=null?entry.total_active:'—')+'</td>'
+        + '<td>'+escapeHtml(formatNiceDate(dateEntry.date))+'</td>'
+        + '<td>'+escapeHtml(dateEntry.class_name||className)+'</td>'
+        + '<td>'+escapeHtml(subjectOrHoursLabel(dateEntry.rows))+'</td>'
+        + '<td class="num">'+escapeHtml(dateEntry.total_active!=null?dateEntry.total_active:'—')+'</td>'
         + '<td class="num"><span class="pill pill-absent">'+escapeHtml(ac)+'</span></td>'
         + '<td class="num"><span class="pill pill-present">'+escapeHtml(pc)+'</span></td>'
         + '<td class="num"><span class="pill '+pillCls+'">'+escapeHtml(pillLabel)+'</span></td>'
@@ -1242,7 +1213,7 @@ export default function App(){
       + '<title>Attendance History Report</title>'
       + '<style>'+PRINT_BASE_STYLE+'</style></head><body>'
       + '<h1>Attendance History Report — '+escapeHtml(className)+'</h1>'
-      + '<div class="meta">Generated on '+escapeHtml(generatedOn)+' · '+history.length+' record(s)</div>'
+      + '<div class="meta">Generated on '+escapeHtml(generatedOn)+' · '+grouped.length+' date(s) · '+history.length+' record(s)</div>'
       + '<div class="legend"><span class="pill pill-present">Green</span>All Present / Present count'
       + '<span class="pill pill-absent">Red</span>Full Day Absent / Absent count'
       + '<span class="pill pill-partial">Amber</span>Partial (specific-hour) absences</div>'
@@ -1258,7 +1229,8 @@ export default function App(){
 
   /* Generates a printable, individual attendance PDF for a single student:
      College/Department header, full student details, and a clean table of
-     every date + exact hours they were absent in. */
+     every date + exact hours they were absent in, driven directly by the
+     flat row-per-hour history data via getStudentHistoryRows(). */
   function handleExportStudentPdf(){
     const rollQ = historySearchRoll.trim();
     if(!rollQ){ triggerShake('historySearchRoll'); showToast('Enter a Roll Number to export', true); return; }
@@ -1310,9 +1282,10 @@ export default function App(){
     }
   }
 
-  async function handleDeleteHistoryEntry(id){
+  /* Deletes every hour-row saved for a given date (a whole day's report). */
+  async function handleDeleteHistoryEntry(date){
     try{
-      const { error } = await supabase.from('attendance_history').delete().eq('id', id);
+      const { error } = await supabase.from('attendance_history').delete().eq('date', date);
       if(error){ showToast('Could not delete report', true); return; }
       showToast('Report deleted'); fetchHistory();
     }catch(e){ showToast('Could not delete report', true); }
@@ -2053,30 +2026,29 @@ export default function App(){
                 );
               })()}
 
-              <p className="helper-text" style={{marginTop:0}}>Each entry below groups all 5 hours saved for that date. Tap a date to see the hour-by-hour absentee breakdown.</p>
+              <p className="helper-text" style={{marginTop:0}}>Each entry below groups every hour saved for that date. Tap a date to see the hour-by-hour absentee breakdown.</p>
               <div className="manage-list">
-                {history.length===0 && <div className="empty-state">No saved reports yet — send an Attendance Report via WhatsApp to create one.</div>}
-                {history.map(function(entry){
-                  const isOpen = expandedHistoryId === entry.id;
-                  const hoursMap = normalizeHoursMap(entry);
-                  const hoursWithAbsentees = HOURS.filter(function(h){ return (hoursMap[String(h)]||[]).length > 0; }).length;
-                  const hourWiseBreakdown = isOpen ? getDateHourWiseBreakdown(entry) : [];
+                {groupedHistory.length===0 && <div className="empty-state">No saved reports yet — send an Attendance Report via WhatsApp to create one.</div>}
+                {groupedHistory.map(function(dateEntry){
+                  const isOpen = expandedHistoryDate === dateEntry.date;
+                  const hoursWithAbsentees = dateEntry.rows.filter(function(row){ return (row.absent_rolls||[]).length > 0; }).length;
+                  const hourWiseBreakdown = isOpen ? getDateHourWiseBreakdown(dateEntry.rows) : [];
                   const allRolls = new Set();
-                  HOURS.forEach(function(h){ (hoursMap[String(h)]||[]).forEach(function(r){ allRolls.add(r); }); });
+                  dateEntry.rows.forEach(function(row){ (row.absent_rolls||[]).forEach(function(r){ allRolls.add(r); }); });
                   const absentCount = allRolls.size;
-                  const presentCount = entry.total_active!=null ? Math.max(entry.total_active-absentCount,0) : null;
+                  const presentCount = dateEntry.total_active!=null ? Math.max(dateEntry.total_active-absentCount,0) : null;
 
                   return (
-                    <div key={entry.id} className="history-row">
-                      <div className="history-row-top" style={{cursor:'pointer'}} onClick={function(){ toggleHistoryExpand(entry.id); }}>
+                    <div key={dateEntry.date} className="history-row">
+                      <div className="history-row-top" style={{cursor:'pointer'}} onClick={function(){ toggleHistoryExpand(dateEntry.date); }}>
                         <div>
-                          <div className="history-row-title">{formatNiceDate(entry.date)}</div>
-                          <div className="history-row-meta">{entry.class_name||'—'} · {hoursWithAbsentees} of {HOURS.length} hour(s) with absentees</div>
+                          <div className="history-row-title">{formatNiceDate(dateEntry.date)}</div>
+                          <div className="history-row-meta">{dateEntry.class_name||'—'} · {hoursWithAbsentees} of {dateEntry.rows.length} hour(s) with absentees</div>
                         </div>
                         <span className="link-btn">{isOpen ? 'Hide' : 'View breakdown'}</span>
                       </div>
                       <div className="history-row-stats">
-                        <span><b>{entry.total_active!=null?entry.total_active:'—'}</b> strength</span>
+                        <span><b>{dateEntry.total_active!=null?dateEntry.total_active:'—'}</b> strength</span>
                         <span><b>{absentCount}</b> absent</span>
                         <span><b>{presentCount!=null?presentCount:'—'}</b> present</span>
                       </div>
@@ -2087,7 +2059,7 @@ export default function App(){
                             return (
                               <div key={hb.hour} style={{marginBottom:10}}>
                                 <div className="manage-row-sub" style={{fontWeight:700,marginBottom:4}}>
-                                  Hour {hb.hour} {hb.absentees.length===0 ? '— No absentees' : '— '+hb.absentees.length+' absent'}
+                                  Hour {hb.hour}{hb.subject ? ' — '+hb.subject : ''} {hb.absentees.length===0 ? (hb.hasData ? '— No absentees' : '— Not recorded') : '— '+hb.absentees.length+' absent'}
                                 </div>
                                 {hb.absentees.map(function(a){
                                   return (
@@ -2102,8 +2074,8 @@ export default function App(){
                         </div>
                       )}
                       <div className="history-actions">
-                        <button type="button" onClick={function(e){ e.stopPropagation(); handleCopyHistoryMessage(buildHistoryMessage(entry)); }}>Copy Message</button>
-                        <button type="button" className="danger" onClick={function(e){ e.stopPropagation(); handleDeleteHistoryEntry(entry.id); }}>Delete</button>
+                        <button type="button" onClick={function(e){ e.stopPropagation(); handleCopyHistoryMessage(buildHistoryMessage(dateEntry)); }}>Copy Message</button>
+                        <button type="button" className="danger" onClick={function(e){ e.stopPropagation(); handleDeleteHistoryEntry(dateEntry.date); }}>Delete</button>
                       </div>
                     </div>
                   );
