@@ -391,6 +391,32 @@ export default function App(){
     setExpandedHistoryId(function(cur){ return cur === id ? null : id; });
   }
 
+  /* ---------- student-specific attendance history search (Admin Dashboard) ---------- */
+  const [historySearchRoll, setHistorySearchRoll] = useState('');
+  /* Builds a per-date list of which hours a given roll number was absent in,
+     across every saved history entry, sorted by date (most recent first —
+     matching the order "history" is already fetched in). Dates where the
+     student had no absences at all are skipped. */
+  function getStudentHistoryRows(rollNo){
+    const rollQ = normalizeRollNo(rollNo);
+    if(!rollQ) return [];
+    const rows = [];
+    history.forEach(function(entry){
+      const hoursMap = normalizeHoursMap(entry);
+      const hoursAbsent = HOURS.filter(function(h){
+        return (hoursMap[String(h)]||[]).some(function(r){ return normalizeRollNo(r)===rollQ; });
+      });
+      if(hoursAbsent.length>0){
+        rows.push({
+          date: entry.date,
+          hoursAbsent: hoursAbsent,
+          isFullDay: hoursAbsent.length >= HOURS.length
+        });
+      }
+    });
+    return rows;
+  }
+
   /* Returns a normalized hours map { "1": [rollNo,...], ..., "5": [...] } for
      both new date-grouped rows (entry.hours) and legacy per-submission rows
      (entry.hour + entry.absent_rolls), so old data keeps working. */
@@ -436,6 +462,22 @@ export default function App(){
     });
     breakdown.sort(function(a,b){ return numericRollCompare(a.rollNo, b.rollNo); });
     return breakdown;
+  }
+
+  /* Hour-wise breakdown for a single date entry: an ordered array (Hour 1 → 5)
+     where each item lists the students absent in that hour, sorted by roll
+     number. Used to render the "View breakdown" panel in a clean, sequential
+     hour-by-hour layout instead of a flat student list. */
+  function getDateHourWiseBreakdown(entry){
+    const hoursMap = normalizeHoursMap(entry);
+    return HOURS.map(function(h){
+      const rolls = (hoursMap[String(h)] || []).slice();
+      const students = rolls.map(function(rollNo){
+        const student = studentDb.find(function(s){ return s.rollNo === rollNo; });
+        return { rollNo: rollNo, name: student ? student.name : rollNo };
+      }).sort(function(a,b){ return numericRollCompare(a.rollNo, b.rollNo); });
+      return { hour: h, absentees: students };
+    });
   }
 
   function buildHistoryMessage(entry){
@@ -679,14 +721,27 @@ export default function App(){
     }
   }
 
-  /* Send to Parents Group via WhatsApp: now auto-saves the attendance record
-     to Supabase history first, then opens the WhatsApp share intent — there
-     is no separate "Save to History" step for the admin to remember. */
+  /* Send to Parents Group via WhatsApp: STRICTLY awaits saveAttendanceToHistory()
+     first. WhatsApp is only opened if the Supabase save succeeds — if the save
+     fails, an error toast is shown and WhatsApp never opens, so we never send a
+     report that wasn't actually recorded in history. */
+  const [sendBusy, setSendBusy] = useState(false);
   async function handleSend(){
     if(!validateBeforeSend()){ triggerShake('sendBtn'); return; }
-    const saved = await saveAttendanceToHistory();
+    setSendBusy(true);
+    let saved = false;
+    try{
+      saved = await saveAttendanceToHistory();
+    } finally {
+      setSendBusy(false);
+    }
+    if(!saved){
+      triggerShake('sendBtn');
+      showToast('Could not save attendance — WhatsApp was not opened. Please try again.', true);
+      return;
+    }
     window.open('https://wa.me/?text='+encodeURIComponent(buildRawMessage()), '_blank');
-    showToast(saved ? 'Saved to history — opening WhatsApp…' : 'Opening WhatsApp… (history save failed)', !saved);
+    showToast('Saved to history — opening WhatsApp…');
   }
   function fallbackCopy(text){
     const ta = document.createElement('textarea');
@@ -1094,36 +1149,89 @@ export default function App(){
     showToast('CSV downloaded');
   }
 
-  /* Opens a print-styled popup with the attendance history table and
-     triggers the browser print dialog so the admin can "Save as PDF". */
+  /* Shared print-window opener: writes printHtml into a popup and triggers
+     the browser print dialog so the admin can "Save as PDF". Used by both
+     the global history export and the per-student export below. */
+  function openPrintWindow(printHtml){
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    if(!printWindow){
+      showToast('Please allow popups to export PDF', true);
+      return false;
+    }
+    printWindow.document.open();
+    printWindow.document.write(printHtml);
+    printWindow.document.close();
+    printWindow.onload = function(){
+      printWindow.focus();
+      printWindow.print();
+    };
+    return true;
+  }
+
+  const PRINT_BASE_STYLE = '*{box-sizing:border-box;}'
+    + 'body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a1a1a;margin:32px;}'
+    + 'h1{font-size:20px;margin:0 0 2px;}'
+    + 'h2{font-size:15px;margin:18px 0 8px;}'
+    + '.meta{font-size:12px;color:#555;margin-bottom:20px;}'
+    + 'table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px;}'
+    + 'th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;}'
+    + 'th{background:#f0f0f0;font-weight:600;}'
+    + 'td.num{text-align:center;}'
+    + '.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-weight:700;font-size:11px;}'
+    + '.pill-present{background:#e3f7ea;color:#1e8449;}'
+    + '.pill-absent{background:#fdeaea;color:#c0392b;}'
+    + '.pill-partial{background:#fff6df;color:#9a6b00;}'
+    + 'tbody tr:nth-child(even){background:#fafafa;}'
+    + '.legend{font-size:11px;color:#555;margin:6px 0 18px;}'
+    + '.legend span{margin-right:14px;}'
+    + '.footer{margin-top:24px;font-size:11px;color:#888;text-align:center;}'
+    + '.student-info{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:18px;}'
+    + '.student-info td{border:1px solid #ccc;padding:6px 8px;}'
+    + '.student-info td.label{background:#f7f7f7;font-weight:600;width:32%;}'
+    + '@media print{body{margin:12mm;}.footer{position:fixed;bottom:8mm;left:0;right:0;}}';
+
+  /* Redesigned global attendance-history PDF export: a neat, structured,
+     color-coded table (green = Present-heavy day, red = Full Day Absent
+     count present, amber = partial/hour-specific absences) covering every
+     saved date. */
   function handleExportPdf(){
     if(history.length===0){ showToast('No history to export', true); return; }
 
-    function subjectOrHoursLabel(entry){
-      const hoursMap = normalizeHoursMap(entry);
-      const activeHours = HOURS.filter(function(h){ return (hoursMap[String(h)]||[]).length > 0; });
-      return activeHours.length ? 'Hours: '+activeHours.join(', ') : 'All hours — no absentees';
-    }
     function absentCount(entry){
       const hoursMap = normalizeHoursMap(entry);
       const rolls = new Set();
       HOURS.forEach(function(h){ (hoursMap[String(h)]||[]).forEach(function(r){ rolls.add(r); }); });
       return rolls.size;
     }
+    function fullDayAbsentCount(entry){
+      const breakdown = getDateAbsenteeBreakdown(entry);
+      return breakdown.filter(function(b){ return b.isFullDay; }).length;
+    }
     function presentCount(entry){
       const strength = entry.total_active!=null ? entry.total_active : 0;
       return Math.max(strength - absentCount(entry), 0);
     }
+    function subjectOrHoursLabel(entry){
+      const hoursMap = normalizeHoursMap(entry);
+      const activeHours = HOURS.filter(function(h){ return (hoursMap[String(h)]||[]).length > 0; });
+      return activeHours.length ? 'Hours: '+activeHours.join(', ') : 'All hours — no absentees';
+    }
 
     const rowsHtml = history.map(function(entry){
+      const ac = absentCount(entry);
+      const fullDay = fullDayAbsentCount(entry);
+      const pc = presentCount(entry);
+      const pillCls = ac===0 ? 'pill-present' : (fullDay>0 ? 'pill-absent' : 'pill-partial');
+      const pillLabel = ac===0 ? 'All Present' : (fullDay>0 ? fullDay+' Full-Day Absent' : 'Partial Absences');
       return (
         '<tr>'
         + '<td>'+escapeHtml(formatNiceDate(entry.date))+'</td>'
         + '<td>'+escapeHtml(entry.class_name||className)+'</td>'
         + '<td>'+escapeHtml(subjectOrHoursLabel(entry))+'</td>'
         + '<td class="num">'+escapeHtml(entry.total_active!=null?entry.total_active:'—')+'</td>'
-        + '<td class="num absent">'+escapeHtml(absentCount(entry))+'</td>'
-        + '<td class="num present">'+escapeHtml(presentCount(entry))+'</td>'
+        + '<td class="num"><span class="pill pill-absent">'+escapeHtml(ac)+'</span></td>'
+        + '<td class="num"><span class="pill pill-present">'+escapeHtml(pc)+'</span></td>'
+        + '<td class="num"><span class="pill '+pillCls+'">'+escapeHtml(pillLabel)+'</span></td>'
         + '</tr>'
       );
     }).join('');
@@ -1132,43 +1240,74 @@ export default function App(){
 
     const printHtml = '<!DOCTYPE html><html><head><meta charset="utf-8" />'
       + '<title>Attendance History Report</title>'
-      + '<style>'
-      + '*{box-sizing:border-box;}'
-      + 'body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a1a1a;margin:32px;}'
-      + 'h1{font-size:20px;margin:0 0 2px;}'
-      + '.meta{font-size:12px;color:#555;margin-bottom:20px;}'
-      + 'table{width:100%;border-collapse:collapse;font-size:12px;}'
-      + 'th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;}'
-      + 'th{background:#f0f0f0;font-weight:600;}'
-      + 'td.num{text-align:center;}'
-      + 'td.absent{color:#c0392b;font-weight:600;}'
-      + 'td.present{color:#1e8449;font-weight:600;}'
-      + 'tbody tr:nth-child(even){background:#fafafa;}'
-      + '.footer{margin-top:24px;font-size:11px;color:#888;text-align:center;}'
-      + '@media print{body{margin:12mm;}.footer{position:fixed;bottom:8mm;left:0;right:0;}}'
-      + '</style></head><body>'
+      + '<style>'+PRINT_BASE_STYLE+'</style></head><body>'
       + '<h1>Attendance History Report — '+escapeHtml(className)+'</h1>'
       + '<div class="meta">Generated on '+escapeHtml(generatedOn)+' · '+history.length+' record(s)</div>'
-      + '<table><thead><tr><th>Date</th><th>Class</th><th>Subject / Hours</th><th>Total Strength</th><th>Absent</th><th>Present</th></tr></thead>'
+      + '<div class="legend"><span class="pill pill-present">Green</span>All Present / Present count'
+      + '<span class="pill pill-absent">Red</span>Full Day Absent / Absent count'
+      + '<span class="pill pill-partial">Amber</span>Partial (specific-hour) absences</div>'
+      + '<table><thead><tr><th>Date</th><th>Class</th><th>Subject / Hours</th><th>Total Strength</th><th>Absent</th><th>Present</th><th>Status</th></tr></thead>'
       + '<tbody>'+rowsHtml+'</tbody></table>'
       + '<div class="footer">BCA App · Attendance Report</div>'
       + '</body></html>';
 
-    const printWindow = window.open('', '_blank', 'width=900,height=700');
-    if(!printWindow){
-      showToast('Please allow popups to export PDF', true);
-      return;
+    if(openPrintWindow(printHtml)){
+      showToast('Opening print dialog — choose "Save as PDF"');
     }
-    printWindow.document.open();
-    printWindow.document.write(printHtml);
-    printWindow.document.close();
+  }
 
-    printWindow.onload = function(){
-      printWindow.focus();
-      printWindow.print();
-    };
+  /* Generates a printable, individual attendance PDF for a single student:
+     College/Department header, full student details, and a clean table of
+     every date + exact hours they were absent in. */
+  function handleExportStudentPdf(){
+    const rollQ = historySearchRoll.trim();
+    if(!rollQ){ triggerShake('historySearchRoll'); showToast('Enter a Roll Number to export', true); return; }
+    const student = studentDb.find(function(s){ return normalizeRollNo(s.rollNo)===normalizeRollNo(rollQ); });
+    if(!student){ triggerShake('historySearchRoll'); showToast('No student found with that Roll Number', true); return; }
 
-    showToast('Opening print dialog — choose "Save as PDF"');
+    const rows = getStudentHistoryRows(student.rollNo);
+    const pct = getAttendancePercent(student.rollNo);
+
+    const rowsHtml = rows.length===0
+      ? '<tr><td colspan="3" style="text-align:center;color:#888;">No absences recorded — full attendance in all saved reports.</td></tr>'
+      : rows.map(function(r){
+          const pillCls = r.isFullDay ? 'pill-absent' : 'pill-partial';
+          const label = r.isFullDay ? 'Full Day Absent' : 'Absent — Hour '+r.hoursAbsent.join(', ');
+          return (
+            '<tr>'
+            + '<td>'+escapeHtml(formatNiceDate(r.date))+'</td>'
+            + '<td class="num">'+escapeHtml(r.hoursAbsent.join(', '))+'</td>'
+            + '<td><span class="pill '+pillCls+'">'+escapeHtml(label)+'</span></td>'
+            + '</tr>'
+          );
+        }).join('');
+
+    const generatedOn = new Date().toLocaleString('en-IN',{ dateStyle:'medium', timeStyle:'short' });
+
+    const printHtml = '<!DOCTYPE html><html><head><meta charset="utf-8" />'
+      + '<title>Individual Attendance Report — '+escapeHtml(student.rollNo)+'</title>'
+      + '<style>'+PRINT_BASE_STYLE+'</style></head><body>'
+      + '<h1>BCA Department — Individual Attendance Report</h1>'
+      + '<div class="meta">Class: '+escapeHtml(className)+' · Generated on '+escapeHtml(generatedOn)+'</div>'
+      + '<table class="student-info"><tbody>'
+      + '<tr><td class="label">Student Name</td><td>'+escapeHtml(student.name)+'</td></tr>'
+      + '<tr><td class="label">Roll Number</td><td>'+escapeHtml(student.rollNo)+'</td></tr>'
+      + '<tr><td class="label">Student Mobile</td><td>'+escapeHtml(student.studentMob||'—')+'</td></tr>'
+      + '<tr><td class="label">Father Mobile</td><td>'+escapeHtml(student.fatherMob||'—')+'</td></tr>'
+      + '<tr><td class="label">College ID</td><td>'+escapeHtml(student.collegeID||'—')+'</td></tr>'
+      + '<tr><td class="label">Part One Language</td><td>'+escapeHtml(student.partOne||'—')+'</td></tr>'
+      + '<tr><td class="label">Date of Birth</td><td>'+escapeHtml(student.dob||'—')+'</td></tr>'
+      + '<tr><td class="label">Overall Attendance %</td><td>'+(pct!=null ? escapeHtml(pct)+'%' : '—')+'</td></tr>'
+      + '</tbody></table>'
+      + '<h2>Absence Record</h2>'
+      + '<table><thead><tr><th>Date</th><th>Hour(s) Absent</th><th>Status</th></tr></thead>'
+      + '<tbody>'+rowsHtml+'</tbody></table>'
+      + '<div class="footer">BCA App · Individual Attendance Report</div>'
+      + '</body></html>';
+
+    if(openPrintWindow(printHtml)){
+      showToast('Opening print dialog — choose "Save as PDF"');
+    }
   }
 
   async function handleDeleteHistoryEntry(id){
@@ -1373,9 +1512,9 @@ export default function App(){
               </div>
             </section>
             <div className="actions">
-              <button type="button" className={"btn btn-primary"+shakeCls('sendBtn')} onClick={handleSend}>
+              <button type="button" className={"btn btn-primary"+shakeCls('sendBtn')} disabled={sendBusy} onClick={handleSend}>
                 <svg viewBox="0 0 24 24" fill="#04201b"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.36 5.07L2 22l5.13-1.32A9.93 9.93 0 0012 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm5.2 14.3c-.22.62-1.28 1.18-1.77 1.25-.45.07-1.02.1-1.65-.1-.38-.12-.86-.28-1.48-.55-2.6-1.12-4.3-3.73-4.43-3.9-.13-.17-1.06-1.4-1.06-2.67 0-1.27.66-1.9.9-2.16.22-.24.5-.3.66-.3.17 0 .3 0 .43.01.14.01.33-.05.51.4.2.5.66 1.74.72 1.86.06.13.1.28.02.45-.42.9-.86 1.18-.6 1.6.74 1.2 1.36 1.78 2.4 2.4.18.1.3.08.43-.03.16-.13.65-.68.83-.91.18-.23.35-.18.58-.1.23.08 1.46.7 1.71.83.25.13.42.2.48.31.06.12.06.65-.16 1.27z"/></svg>
-                Send to Parents Group via WhatsApp
+                {sendBusy ? 'Saving…' : 'Send to Parents Group via WhatsApp'}
               </button>
               <button type="button" className={"btn btn-secondary"+shakeCls('copyBtn')} onClick={handleCopy}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
@@ -1877,14 +2016,51 @@ export default function App(){
                 <h2 className="card-title">Attendance History</h2>
                 <button type="button" className="link-btn" onClick={handleExportPdf}>Export PDF</button>
               </div>
-              <p className="helper-text" style={{marginTop:0}}>Each entry below groups all 5 hours saved for that date. Tap a date to see the hour-wise absentee breakdown.</p>
+
+              <p className="helper-text" style={{marginTop:0}}>Look up a specific student's attendance record across every saved date, or export their individual report as a PDF.</p>
+              <div className="add-row">
+                <input type="text" inputMode="numeric" placeholder="Enter Roll Number…" autoComplete="off"
+                  className={shakeCls('historySearchRoll')} value={historySearchRoll} onChange={function(e){ setHistorySearchRoll(e.target.value); }} />
+                <button type="button" className="btn-add" onClick={handleExportStudentPdf}>Export Student PDF</button>
+              </div>
+
+              {historySearchRoll.trim() && (function(){
+                const rollQ = historySearchRoll.trim();
+                const student = studentDb.find(function(s){ return normalizeRollNo(s.rollNo)===normalizeRollNo(rollQ); });
+                if(!student){
+                  return <div className="empty-state">No student found with Roll Number "{rollQ}".</div>;
+                }
+                const rows = getStudentHistoryRows(student.rollNo);
+                const pct = getAttendancePercent(student.rollNo);
+                return (
+                  <div className="history-breakdown" style={{marginBottom:16,borderTop:'1px solid var(--border)',paddingTop:10}}>
+                    <div className="result-row">
+                      <span className="result-row-subject"><strong>{student.name}</strong> · {student.rollNo}</span>
+                      <span className="result-row-marks">{pct!=null ? pct+'% attendance' : 'No data yet'}</span>
+                    </div>
+                    {rows.length===0 && <div className="empty-state">No absences recorded for this student.</div>}
+                    {rows.map(function(r){
+                      return (
+                        <div key={r.date} className="result-row">
+                          <span className="result-row-subject">{formatNiceDate(r.date)}</span>
+                          <span className={"result-row-marks"+(r.isFullDay?' low':'')}>
+                            {r.isFullDay ? 'Full Day Absent' : 'Absent — Hour '+r.hoursAbsent.join(', ')}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              <p className="helper-text" style={{marginTop:0}}>Each entry below groups all 5 hours saved for that date. Tap a date to see the hour-by-hour absentee breakdown.</p>
               <div className="manage-list">
                 {history.length===0 && <div className="empty-state">No saved reports yet — send an Attendance Report via WhatsApp to create one.</div>}
                 {history.map(function(entry){
                   const isOpen = expandedHistoryId === entry.id;
                   const hoursMap = normalizeHoursMap(entry);
                   const hoursWithAbsentees = HOURS.filter(function(h){ return (hoursMap[String(h)]||[]).length > 0; }).length;
-                  const breakdown = isOpen ? getDateAbsenteeBreakdown(entry) : [];
+                  const hourWiseBreakdown = isOpen ? getDateHourWiseBreakdown(entry) : [];
                   const allRolls = new Set();
                   HOURS.forEach(function(h){ (hoursMap[String(h)]||[]).forEach(function(r){ allRolls.add(r); }); });
                   const absentCount = allRolls.size;
@@ -1906,12 +2082,20 @@ export default function App(){
                       </div>
                       {isOpen && (
                         <div className="history-breakdown" style={{marginTop:8,borderTop:'1px solid var(--border)',paddingTop:8}}>
-                          {breakdown.length===0 && <div className="empty-state">No absentees recorded for this date.</div>}
-                          {breakdown.map(function(b){
+                          {absentCount===0 && <div className="empty-state">No absentees recorded for this date.</div>}
+                          {absentCount>0 && hourWiseBreakdown.map(function(hb){
                             return (
-                              <div key={b.rollNo} className="result-row">
-                                <span className="result-row-subject">{b.rollNo} - {b.name}</span>
-                                <span className={"result-row-marks"+(b.isFullDay?' low':'')}>{b.label}</span>
+                              <div key={hb.hour} style={{marginBottom:10}}>
+                                <div className="manage-row-sub" style={{fontWeight:700,marginBottom:4}}>
+                                  Hour {hb.hour} {hb.absentees.length===0 ? '— No absentees' : '— '+hb.absentees.length+' absent'}
+                                </div>
+                                {hb.absentees.map(function(a){
+                                  return (
+                                    <div key={a.rollNo} className="result-row">
+                                      <span className="result-row-subject">{a.rollNo} - {a.name}</span>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             );
                           })}
