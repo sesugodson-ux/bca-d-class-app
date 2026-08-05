@@ -1010,21 +1010,21 @@ export default function App(){
                 <span><i className="legend-swatch absent"></i>Absent</span>
                 <span><i className="legend-swatch left"></i>Left college</span>
               </div>
-              <p className="helper-text" style={{marginTop:0}}>Tap a roll number to cycle Present → Absent → Present. Left students stay visible but are disabled.</p>
               <div className="attendance-grid">
                 {gridStudents.map(function(s){
-                  const isLeft = leftIds.indexOf(s.id)!==-1;
-                  const state = rollState[s.id]||'present';
-                  const displayNum = s.rollNo ? String(s.rollNo).slice(-2) : 'XX';
+                  const isLeft = leftIds.indexOf(s.id) !== -1;
+                  const state = rollState[s.id] || 'present';
+                  const displayNum = (s.rollNo && String(s.rollNo).trim() !== 'XX') ? String(s.rollNo).slice(-2) : 'XX';
+
                   return (
                     <button
                       key={s.id}
                       type="button"
-                      className={"roll-btn"+(state==='absent'?' state-absent':'')+(isLeft?' state-left':'')}
-                      title={s.name+' · '+s.rollNo}
-                      aria-label={s.name+' — '+state}
+                      className={"roll-btn" + (isLeft ? ' state-left' : (state === 'absent' ? ' state-absent' : ''))}
+                      title={s.name + ' · ' + s.rollNo + (isLeft ? ' (Left)' : '')}
+                      aria-label={s.name + (isLeft ? ' — Left' : ' — ' + state)}
                       disabled={isLeft}
-                      onClick={isLeft ? undefined : function(){ cycleRollState(s.id); }}>
+                      onClick={function(){ if(!isLeft) cycleRollState(s.id); }}>
                       {displayNum}
                     </button>
                   );
