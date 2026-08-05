@@ -416,7 +416,12 @@ export default function App(){
   }, [studentDb, leftIds]);
 
   const gridStudents = useMemo(function(){
-    return studentDb.filter(function(s){ return s.name !== 'XX'; });
+    return studentDb
+      .filter(function(s){ return s.name !== 'XX'; })
+      .sort(function(a, b){
+        // Explicitly sort by rollNo on the frontend to guarantee correct grid order
+        return String(a.rollNo).localeCompare(String(b.rollNo), undefined, { numeric: true });
+      });
   }, [studentDb]);
 
   const summary = useMemo(function(){
