@@ -225,8 +225,8 @@ export default function App(){
           id: String(row.id),
           rollNo: pick(row, ['roll_number','roll_no','rollNo','rollno']),
           name: pick(row, ['student_name','name','full_name','studentName']),
-          studentMob: pick(row, ['student_mob','student_mobile','studentMob','student_phone','mobile']),
-          fatherMob: pick(row, ['father_mob','father_mobile','fatherMob','father_phone','parent_mob']),
+          studentMob: pick(row, ['mobile_number','student_mob','student_mobile','studentMob','student_phone','mobile']),
+          fatherMob: pick(row, ['father_mobile','father_mob','fatherMob','father_phone','parent_mob']),
           collegeID: pick(row, ['college_id','college_email','collegeID','college_mail','email']),
           partOne: pick(row, ['part_one','part_one_language','partOne','language']),
           dob: pick(row, ['dob','date_of_birth','dateOfBirth'])
