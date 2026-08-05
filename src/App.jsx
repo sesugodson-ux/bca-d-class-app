@@ -400,6 +400,10 @@ export default function App(){
     return studentDb.filter(function(s){ return s.name!=='XX' && leftIds.indexOf(s.id)===-1; });
   }, [studentDb, leftIds]);
 
+  const gridStudents = useMemo(function(){
+    return studentDb.filter(function(s){ return s.name!=='XX'; });
+  }, [studentDb]);
+
   const summary = useMemo(function(){
     const absentList = activeStudents.filter(function(s){ return rollState[s.id]==='absent'; })
       .sort(function(a,b){ return a.id.localeCompare(b.id); });
@@ -1006,14 +1010,23 @@ export default function App(){
                 <span><i className="legend-swatch absent"></i>Absent</span>
                 <span><i className="legend-swatch left"></i>Left college</span>
               </div>
-              <p className="helper-text" style={{marginTop:0}}>Tap a roll number to cycle Present → Absent → Present. Left students are hidden.</p>
+              <p className="helper-text" style={{marginTop:0}}>Tap a roll number to cycle Present → Absent → Present. Left students stay visible but are disabled.</p>
               <div className="attendance-grid">
-                {activeStudents.map(function(s){
+                {gridStudents.map(function(s){
+                  const isLeft = leftIds.indexOf(s.id)!==-1;
                   const state = rollState[s.id]||'present';
+                  const displayNum = s.rollNo ? String(s.rollNo).slice(-2) : 'XX';
                   return (
-                    <button key={s.id} type="button" className={"roll-btn"+(state==='absent'?' state-absent':'')}
-                      title={s.name+' · '+s.rollNo} aria-label={s.name+' — '+state}
-                      onClick={function(){ cycleRollState(s.id); }}>{s.id}</button>
+                    <button
+                      key={s.id}
+                      type="button"
+                      className={"roll-btn"+(state==='absent'?' state-absent':'')+(isLeft?' state-left':'')}
+                      title={s.name+' · '+s.rollNo}
+                      aria-label={s.name+' — '+state}
+                      disabled={isLeft}
+                      onClick={isLeft ? undefined : function(){ cycleRollState(s.id); }}>
+                      {displayNum}
+                    </button>
                   );
                 })}
               </div>

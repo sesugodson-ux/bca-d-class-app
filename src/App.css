@@ -448,7 +448,7 @@ button{font-family:inherit;}
 .legend-swatch.od{background:#ffcc00;}
 .legend-swatch.left{background:#666666;}
 
-.attendance-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(45px,1fr));gap:8px;}
+.attendance-grid{display:grid;grid-template-columns:repeat(5, 1fr);gap:8px;}
 .roll-btn{
   position:relative;aspect-ratio:1/1;min-height:45px;
   border-radius:var(--radius-sm);border:1px solid rgba(0,168,132,.35);
@@ -463,6 +463,15 @@ button{font-family:inherit;}
 .roll-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 .roll-btn.state-absent{background:#ff4d4d;border-color:#ff4d4d;color:#2a0a0d;}
 .roll-btn.state-od{background:#ffcc00;border-color:#ffcc00;color:#2a1d04;}
+.roll-btn.state-left{
+  background:#2a2a2a;
+  border-color:#2a2a2a;
+  color:#8b8b8b;
+  opacity:0.55;
+  pointer-events:none;
+  cursor:not-allowed;
+}
+.roll-btn.state-left:hover{background:#2a2a2a;border-color:#2a2a2a;}
 
 .stats-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;}
 @media(min-width:420px){.stats-strip{grid-template-columns:repeat(5,1fr);}}
