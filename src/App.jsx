@@ -146,15 +146,88 @@ function groupHistoryByDate(rows){
 const STUDY_TABLE = 'study_materials';
 const STUDY_BUCKET = 'materials';
 
+function LoginScreen({ busy, roll, dob, error, onRollChange, onDobChange, onSubmit }){
+  return (
+    <div className="app" data-theme="dark">
+      <main>
+        <section className="view active">
+          <div className="landing-intro">
+            <p className="landing-eyebrow">Welcome</p>
+            <h2 className="landing-heading">Login to continue</h2>
+          </div>
+          <div className="card login-card">
+            {error && <p className="error-text" style={{ marginBottom: '1rem', color: '#dc2626' }}>{error}</p>}
+            <div className="stack-fields">
+              <div className="field">
+                <label>Roll Number</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="e.g. 255113XXX"
+                  autoComplete="off"
+                  value={roll}
+                  onChange={function(e){ onRollChange(e.target.value); }}
+                />
+              </div>
+              <div className="field">
+                <label>Date of Birth</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="DD-MM-YYYY"
+                  maxLength={10}
+                  autoComplete="off"
+                  value={dob}
+                  onChange={function(e){ onDobChange(maskDobValue(e.target.value)); }}
+                />
+              </div>
+            </div>
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={onSubmit}>
+              {busy ? 'Verifying…' : 'Login'}
+            </button>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
 export default function App(){
   /* ---------- theme ---------- */
   const [theme, setTheme] = useState(function(){ return localStorage.getItem(LS_THEME) || 'dark'; });
   useEffect(function(){ localStorage.setItem(LS_THEME, theme); }, [theme]);
   function toggleTheme(){ setTheme(function(t){ return t==='dark' ? 'light' : 'dark'; }); }
 
+  const LS_USER = 'bca_app_user';
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(function(){
+    try{
+      const raw = localStorage.getItem(LS_USER);
+      if(raw){
+        const parsed = safeParse(raw, null);
+        if(parsed && parsed.rollNo && parsed.role){
+          setCurrentUser(parsed);
+        }
+      }
+    }catch(e){ console.error(e); }
+    setAuthChecked(true);
+  }, []);
+
+  function handleLogout(){
+    try{ localStorage.removeItem(LS_USER); }catch(e){ console.error(e); }
+    setCurrentUser(null);
+    goLanding();
+  }
+
   /* ---------- navigation ---------- */
   const [view, setView] = useState('landing');
   const databaseRollInputRef = useRef(null);
+  const [loginScreenRoll, setLoginScreenRoll] = useState('');
+  const [loginScreenDob, setLoginScreenDob] = useState('');
+  const [loginScreenBusy, setLoginScreenBusy] = useState(false);
+  const [loginScreenError, setLoginScreenError] = useState('');
 
   useEffect(function(){
     if(view === 'database'){
@@ -327,6 +400,46 @@ export default function App(){
         return credentialsMatch(a.rollNo, a.dob, rollNo, dob);
       });
     }catch(e){ console.error(e); return false; }
+  }
+
+  async function attemptUnifiedLogin(){
+    const rollNo = loginScreenRoll.trim();
+    const dob = loginScreenDob.trim();
+    if(!rollNo){ triggerShake('loginRoll'); showToast('Enter your Roll Number', true); return; }
+    if(!isValidDobFormat(dob)){ triggerShake('loginDob'); showToast('DOB must be DD-MM-YYYY', true); return; }
+    setLoginScreenBusy(true);
+    setLoginScreenError('');
+    try{
+      const ok = await verifyAdmin(rollNo, dob);
+      if(ok){
+        const user = { role:'admin', rollNo, name: 'Admin' };
+        setCurrentUser(user);
+        localStorage.setItem(LS_USER, JSON.stringify(user));
+        showToast('Welcome back!');
+        await fetchSubjects(); await fetchAdmins(); await fetchTimetable(); await fetchCurrentDayOrder();
+        navTo('landing');
+        return;
+      }
+      if(studentDb.length===0){ await fetchStudents(); }
+      const student = findStudentByCredentials(rollNo, dob);
+      if(!student){
+        triggerShake('loginCard');
+        setLoginScreenError('Invalid credentials.');
+        showToast('Invalid Roll Number or Date of Birth', true);
+        return;
+      }
+      const user = { role:'student', rollNo: student.rollNo, name: student.name };
+      setCurrentUser(user);
+      localStorage.setItem(LS_USER, JSON.stringify(user));
+      showToast('Welcome back, '+student.name+'!');
+      navTo('landing');
+    }catch(e){
+      console.error(e);
+      setLoginScreenError('Login failed.');
+      showToast('Login failed. Please try again.', true);
+    }finally{
+      setLoginScreenBusy(false);
+    }
   }
 
   /* ---------- timetable ---------- */
@@ -581,7 +694,6 @@ export default function App(){
     setCurrentAdminRollNo('');
     setCurrentStudyRollNo('');
     setCurrentStudyIsAdmin(false);
-    setStudyLoginMode('student');
     setSemesterResults([]); setSemesterList([]); setSelectedSemester(null);
     setView('landing');
     window.scrollTo(0,0);
@@ -1637,6 +1749,23 @@ export default function App(){
   /* =========================================================  RENDER  ========================================================= */
   const shakeCls = function(key){ return shakeKey[key] ? ' shake' : ''; };
 
+  if(!authChecked){
+    return null;
+  }
+  if(!currentUser){
+    return (
+      <LoginScreen
+        busy={loginScreenBusy}
+        dob={loginScreenDob}
+        error={loginScreenError}
+        onDobChange={setLoginScreenDob}
+        onRollChange={setLoginScreenRoll}
+        onSubmit={attemptUnifiedLogin}
+        roll={loginScreenRoll}
+      />
+    );
+  }
+
   return (
     <div className="app" data-theme={theme}>
       <header className="app-header">
@@ -1664,41 +1793,46 @@ export default function App(){
         {view==='landing' && (
           <section className="view active">
             <div className="landing-intro">
-              <h2 className="landing-heading">What would you like to do?</h2>
+              <h2 className="landing-heading">Welcome, {currentUser.name || currentUser.rollNo || 'Admin'}</h2>
+              <p className="helper-text">{currentUser.role==='admin' ? 'Admin access' : 'Roll No '+currentUser.rollNo}</p>
             </div>
-            <TimetableWidget timetable={timetable} currentDayOrder={currentDayOrder} onChangeDayOrder={function(d){ setCurrentDayOrder(d); }} editable={false} />
+            <TimetableWidget currentDayOrder={currentDayOrder} editable={false} onChangeDayOrder={function(d){ setCurrentDayOrder(d); }} timetable={timetable} />
 
-            <button type="button" className="mode-card mode-card-primary" onClick={goDailyLoginGate}>
-              <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#04201b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l2.5 2.5L16 8.5"/><rect x="3.5" y="3.5" width="17" height="17" rx="4"/></svg></span>
-              <span className="mode-card-text"><span className="mode-card-title">Attendance Report</span><span className="mode-card-sub">Mark attendance on the grid &amp; send today's report</span></span>
-              <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
-            </button>
+            {currentUser.role==='admin' && (
+              <>
+                <button type="button" className="mode-card mode-card-primary" onClick={function(){ setDailyAuthenticated(true); setCurrentAdminRollNo(currentUser.rollNo); navTo('daily'); }}>
+                  <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#04201b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l2.5 2.5L16 8.5"/><rect x="3.5" y="3.5" width="17" height="17" rx="4"/></svg></span>
+                  <span className="mode-card-text"><span className="mode-card-title">Attendance Report</span><span className="mode-card-sub">Record absentees and generate daily reports</span></span>
+                  <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+                </button>
 
-            <button type="button" className="mode-card mode-card-tertiary" onClick={goDatabaseLogin}>
-              <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#53bdeb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
-              <span className="mode-card-text"><span className="mode-card-title">Student Database</span><span className="mode-card-sub">Look up &amp; edit contact details by roll or mobile no.</span></span>
-              <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
-            </button>
+                <button type="button" className="mode-card mode-card-tertiary" onClick={function(){ navTo('database'); }}>
+                  <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#53bdeb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
+                  <span className="mode-card-text"><span className="mode-card-title">Student Database</span><span className="mode-card-sub">View and manage class student list</span></span>
+                  <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+                </button>
 
-            <button type="button" className="mode-card mode-card-quaternary" onClick={goStudyRoleSelect}>
+                <button type="button" className="mode-card mode-card-secondary" onClick={function(){ navTo('adminDashboard'); }}>
+                  <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8696a0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span>
+                  <span className="mode-card-text"><span className="mode-card-title">Admin Settings</span><span className="mode-card-sub">Manage timetable, subjects, and settings</span></span>
+                  <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+                </button>
+              </>
+            )}
+
+            <button type="button" className="mode-card mode-card-quaternary" onClick={function(){ setCurrentStudyRollNo(currentUser.rollNo); setCurrentStudyIsAdmin(currentUser.role==='admin'); refreshStudyView().then(function(){ navTo('studyDashboard'); }); }}>
               <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ffcc00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
-              <span className="mode-card-text"><span className="mode-card-title">Study Material</span><span className="mode-card-sub">Browse notes &amp; resources shared for each subject</span></span>
+              <span className="mode-card-text"><span className="mode-card-title">Study Materials</span><span className="mode-card-sub">Access class notes, syllabus, and resources</span></span>
               <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
             </button>
 
-            <button type="button" className="mode-card mode-card-quinary" onClick={goSemesterRoleSelect}>
+            <button type="button" className="mode-card mode-card-quinary" onClick={function(){ setCurrentStudyRollNo(currentUser.rollNo); setCurrentStudyIsAdmin(currentUser.role==='admin'); fetchSemesterResults(currentUser.rollNo).then(function(){ navTo('semesterResults'); }); }}>
               <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#be78ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3 6 6 .9-4.5 4.3 1.1 6-5.6-3-5.6 3 1.1-6L3 8.9 9 8z"/></svg></span>
-              <span className="mode-card-text"><span className="mode-card-title">Semester Results</span><span className="mode-card-sub">View your marks &amp; percentage per semester</span></span>
+              <span className="mode-card-text"><span className="mode-card-title">Semester Results</span><span className="mode-card-sub">Check internal and external marks</span></span>
               <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
             </button>
 
-            <button type="button" className="mode-card mode-card-secondary" onClick={goAdminLogin}>
-              <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8696a0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span>
-              <span className="mode-card-text"><span className="mode-card-title">Admin Settings</span><span className="mode-card-sub">Subjects, students, admins, timetable &amp; history</span></span>
-              <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
-            </button>
-
-            <p className="app-footer">Class: {className} · {studentDb.length} students loaded ({leftIds.length} Left)</p>
+            <button type="button" className="btn btn-secondary" onClick={handleLogout} style={{marginTop:'20px'}}>Logout</button>
             <p className="app-footer">Created by GODSON S</p>
           </section>
         )}
