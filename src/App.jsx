@@ -146,48 +146,92 @@ function groupHistoryByDate(rows){
 const STUDY_TABLE = 'study_materials';
 const STUDY_BUCKET = 'materials';
 
-function LoginScreen({ busy, roll, dob, error, onRollChange, onDobChange, onSubmit }){
+function LoginScreen({ roll, dob, busy, error, onRollChange, onDobChange, onSubmit, theme, sectionLabel }){
+  const rollInputRef = useRef(null);
+  useEffect(function(){
+    if(rollInputRef.current){
+      rollInputRef.current.focus();
+    }
+  }, []);
+
   return (
-    <div className="app" data-theme="dark">
-      <main>
-        <section className="view active">
-          <div className="landing-intro">
-            <p className="landing-eyebrow">Welcome</p>
-            <h2 className="landing-heading">Login to continue</h2>
+    <div className="app" data-theme={theme}>
+      <div style={{maxWidth: 400, margin: '60px auto', padding: '0 20px', display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+
+        {/* Top Branding Section */}
+        <div style={{marginBottom: '32px', textAlign: 'center'}}>
+          <h1 style={{fontSize: '28px', fontWeight: 900, color: 'var(--text)', margin: '0 0 8px 0', letterSpacing: '0.5px'}}>
+            BCA App
+          </h1>
+          <span style={{
+            display: 'inline-block',
+            background: 'rgba(16, 185, 129, 0.1)',
+            color: '#10b981',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            padding: '4px 14px',
+            borderRadius: '20px',
+            fontSize: '12px',
+            fontWeight: 800
+          }}>
+            {sectionLabel}
+          </span>
+        </div>
+
+        {/* Login Card */}
+        <div className="card" style={{width: '100%', padding: '24px'}}>
+          <div style={{textAlign: 'center', marginBottom: '24px'}}>
+            <h2 style={{fontSize: '18px', fontWeight: 800, margin: '0 0 4px 0', color: 'var(--text)'}}>Welcome Back</h2>
+            <p className="helper-text" style={{margin: 0}}>Login to continue</p>
           </div>
-          <div className="card login-card">
-            {error && <p className="error-text" style={{ marginBottom: '1rem', color: '#dc2626' }}>{error}</p>}
-            <div className="stack-fields">
-              <div className="field">
-                <label>Roll Number</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="e.g. 255113XXX"
-                  autoComplete="off"
-                  value={roll}
-                  onChange={function(e){ onRollChange(e.target.value); }}
-                />
-              </div>
-              <div className="field">
-                <label>Date of Birth</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="DD-MM-YYYY"
-                  maxLength={10}
-                  autoComplete="off"
-                  value={dob}
-                  onChange={function(e){ onDobChange(maskDobValue(e.target.value)); }}
-                />
-              </div>
+
+          <div className="stack-fields">
+            <div className="field">
+              <label>Roll Number</label>
+              <input
+                ref={rollInputRef}
+                type="text"
+                inputMode="numeric"
+                placeholder="e.g. 255113XXX"
+                autoComplete="off"
+                value={roll}
+                onChange={function(e){ onRollChange(e.target.value); }}
+                onKeyDown={function(e){ if(e.key === 'Enter'){ e.preventDefault(); document.getElementById('unifiedLoginDobInput')?.focus(); } }}
+              />
             </div>
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={onSubmit}>
-              {busy ? 'Verifying…' : 'Login'}
-            </button>
+            <div className="field">
+              <label>Date of Birth</label>
+              <input
+                id="unifiedLoginDobInput"
+                type="text"
+                inputMode="numeric"
+                placeholder="DD-MM-YYYY"
+                maxLength={10}
+                autoComplete="off"
+                value={dob}
+                onChange={function(e){ onDobChange(maskDobValue(e.target.value)); }}
+                onKeyDown={function(e){ if(e.key === 'Enter') onSubmit(); }}
+              />
+            </div>
           </div>
-        </section>
-      </main>
+
+          {error && <p className="helper-text" style={{color: 'var(--danger)', marginTop: '12px', textAlign: 'center', fontWeight: 600}}>{error}</p>}
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{marginTop: '24px', width: '100%', padding: '12px', fontSize: '15px'}}
+            disabled={busy}
+            onClick={onSubmit}
+          >
+            {busy ? 'Verifying…' : 'Login'}
+          </button>
+        </div>
+
+        {/* Footer */}
+        <div style={{marginTop: '40px', fontSize: '12px', color: 'var(--text-dim)', fontWeight: 600}}>
+          Created by GODSON S
+        </div>
+      </div>
     </div>
   );
 }
@@ -1762,6 +1806,8 @@ export default function App(){
         onRollChange={setLoginScreenRoll}
         onSubmit={attemptUnifiedLogin}
         roll={loginScreenRoll}
+        sectionLabel={className}
+        theme={theme}
       />
     );
   }
