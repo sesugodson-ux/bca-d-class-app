@@ -1447,6 +1447,83 @@ export default function App(){
     }
   }
 
+  function handleExportPdfForDate(entry) {
+    const generatedOn = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+    const niceDate = formatNiceDate(entry.date);
+    const hoursMap = {};
+    const recordedHourSet = new Set();
+    entry.rows.forEach(function(row){
+      recordedHourSet.add(Number(row.hour));
+      hoursMap[row.hour] = row.absent_rolls || [];
+    });
+
+    const recordedHours = HOURS.map(function(h){
+      return { hour: h, isRecorded: recordedHourSet.has(h) };
+    });
+
+    const students = studentDb.slice().sort(function(a, b){ return numericRollCompare(a.rollNo, b.rollNo); });
+
+    const rowsHtml = students.map(function(student, i){
+      let tds = '<td class="num">'+(i + 1)+'</td>'
+              + '<td>'+escapeHtml(student.rollNo)+'</td>'
+              + '<td><b>'+escapeHtml(student.name)+'</b></td>';
+
+      recordedHours.forEach(function(rh){
+        if (!rh.isRecorded) {
+          tds += '<td style="text-align:center;color:#94a3b8;font-weight:600;">—</td>';
+        } else {
+          const isAbsent = (hoursMap[rh.hour] || []).indexOf(student.rollNo) !== -1;
+          if (isAbsent) {
+            tds += '<td style="text-align:center;color:#dc2626;font-weight:800;">A</td>';
+          } else {
+            tds += '<td style="text-align:center;color:#16a34a;font-weight:800;">P</td>';
+          }
+        }
+      });
+      return '<tr>'+tds+'</tr>';
+    }).join('');
+
+    const UNIFIED_PRINT_STYLE = '*{box-sizing:border-box;}'
+      + 'body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#2c3e50;margin:24px;background:#fff;}'
+      + '.header{text-align:center;margin-bottom:20px;border-bottom:2px solid #e2e8f0;padding-bottom:12px;}'
+      + '.college-name{font-size:20px;font-weight:800;color:#1e3a8a;margin:0 0 4px;text-transform:uppercase;letter-spacing:0.5px;}'
+      + '.dept-name{font-size:13px;font-weight:600;color:#0f766e;margin:0 0 4px;}'
+      + '.report-title{font-size:14px;font-weight:700;color:#475569;margin:0;}'
+      + '.meta{font-size:11px;color:#64748b;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}'
+      + 'table{width:100%;border-collapse:separate;border-spacing:0;font-size:11.5px;margin-bottom:12px;border-radius:8px;overflow:hidden;border:1px solid #cbd5e1;}'
+      + 'th,td{padding:7px 10px;text-align:left;border-bottom:1px solid #e2e8f0;border-right:1px solid #e2e8f0;}'
+      + 'th:last-child,td:last-child{border-right:none;}'
+      + 'tbody tr:last-child td{border-bottom:none;}'
+      + 'th{background:#f8fafc;color:#334155;font-weight:700;text-align:center;}'
+      + 'th:nth-child(2),th:nth-child(3){text-align:left;}'
+      + 'td.num{text-align:center;width:30px;}'
+      + 'tbody tr:nth-child(even){background:#fafafa;}'
+      + '.footer{position:fixed;bottom:8mm;left:0;right:0;text-align:center;font-size:7.5px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:4px;}'
+      + '@media print{body{margin:10mm;}}';
+
+    const printHtml = '<!DOCTYPE html><html><head><meta charset="utf-8" />'
+      + '<title>Full Day Attendance — ' + escapeHtml(entry.date) + '</title>'
+      + '<style>' + UNIFIED_PRINT_STYLE + '</style></head><body>'
+      + '<div class="header">'
+      + '<div class="college-name">Bishop Heber College</div>'
+      + '<div class="dept-name">Department of Computer Applications (BCA)</div>'
+      + '<div class="report-title">Full Day Attendance Master Register</div>'
+      + '</div>'
+      + '<div class="meta"><span>Class: <b>' + escapeHtml(entry.class_name || className) + '</b> · Date: <b>' + escapeHtml(niceDate) + '</b></span><span>Generated: ' + escapeHtml(generatedOn) + '</span></div>'
+      + '<table><thead><tr>'
+      + '<th>#</th><th>Roll Number</th><th>Student Name</th>'
+      + '<th>H1</th><th>H2</th><th>H3</th><th>H4</th><th>H5</th>'
+      + '</tr></thead><tbody>'
+      + rowsHtml
+      + '</tbody></table>'
+      + '<div class="footer">BCA Class Portal Record · Student-managed internal utility report. May contain minor discrepancies compared to official college portals.</div>'
+      + '</body></html>';
+
+    if(openPrintWindow(printHtml)){
+      showToast('Opening print dialog for Full Day Report — choose "Save as PDF"');
+    }
+  }
+
   /* ---------- edit student modal ---------- */
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingStudentId, setEditingStudentId] = useState(null);
@@ -2254,6 +2331,7 @@ export default function App(){
                       )}
                       <div className="history-actions">
                         <button type="button" onClick={function(e){ e.stopPropagation(); handleCopyHistoryMessage(buildHistoryMessage(dateEntry)); }}>Copy Message</button>
+                        <button type="button" onClick={function(e){ e.stopPropagation(); handleExportPdfForDate(dateEntry); }}>Export Full Day PDF</button>
                         <button type="button" className="danger" onClick={function(e){ e.stopPropagation(); handleDeleteHistoryEntry(dateEntry.date); }}>Delete</button>
                       </div>
                     </div>
