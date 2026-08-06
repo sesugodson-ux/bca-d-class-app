@@ -521,7 +521,29 @@ button{font-family:inherit;}
 .history-actions button:hover{background:rgba(255,255,255,.09);}
 .history-actions button.danger{color:var(--danger);border-color:rgba(255,77,77,.35);background:rgba(255,77,77,.08);}
 .history-actions button.danger:hover{background:rgba(255,77,77,.18);}
-
+.hb-action-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--panel-border);
+  background: rgba(255,255,255,.04);
+  color: var(--text);
+  transition: background .15s var(--ease);
+}
+.hb-action-btn:hover {
+  background: rgba(255,255,255,.09);
+}
+.hb-action-btn.danger {
+  color: var(--danger);
+  border-color: rgba(255,77,77,.35);
+  background: rgba(255,77,77,.08);
+}
+.hb-action-btn.danger:hover {
+  background: rgba(255,77,77,.18);
+}
 /* ===== EDIT MODAL ===== */
 .modal-overlay{
   position:fixed;inset:0;z-index:60;
