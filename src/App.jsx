@@ -216,7 +216,7 @@ function LoginScreen({ roll, dob, busy, error, onRollChange, onDobChange, onSubm
               </div>
             </div>
 
-            {error && <p className="helper-text" style={{color: 'var(--danger)', marginTop: '16px', textAlign: 'center', fontWeight: 700'}}>{error}</p>}
+            {error && <p className="helper-text" style={{color: 'var(--danger)', marginTop: '16px', textAlign: 'center', fontWeight: 700}}>{error}</p>}
 
             <button
               type="button"
