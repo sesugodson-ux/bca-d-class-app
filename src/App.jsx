@@ -454,41 +454,47 @@ export default function App(){
   async function attemptUnifiedLogin(){
     const rollNo = loginScreenRoll.trim();
     const dob = loginScreenDob.trim();
-    if(!rollNo){ triggerShake('loginRoll'); showToast('Enter your Roll Number', true); return; }
-    if(!isValidDobFormat(dob)){ triggerShake('loginDob'); showToast('DOB must be DD-MM-YYYY', true); return; }
-    setLoginScreenBusy(true);
     setLoginScreenError('');
-    try{
-      const ok = await verifyAdmin(rollNo, dob);
-      if(ok){
-        const user = { role:'admin', rollNo, name: 'Admin' };
-        setCurrentUser(user);
+
+    if(!rollNo){ setLoginScreenError('Enter your Roll Number'); return; }
+    if(!isValidDobFormat(dob)){ setLoginScreenError('DOB must be DD-MM-YYYY'); return; }
+
+    setLoginScreenBusy(true);
+    try{    
+      // 1. Check admins table first
+      const isAdmin = await verifyAdmin(rollNo, dob);
+      if(isAdmin){
+        const user = { rollNo, role:'admin', name:'Admin' };
         localStorage.setItem(LS_USER, JSON.stringify(user));
-        showToast('Welcome back!');
-        await fetchSubjects(); await fetchAdmins(); await fetchTimetable(); await fetchCurrentDayOrder();
-        navTo('landing');
+        setCurrentUser(user);
+        
+        // FIX: Added await fetchStudents() so history can map names correctly!
+        await fetchStudents(); 
+        await fetchSubjects(); 
+        await fetchAdmins(); 
+        await fetchHistory(); 
+        await fetchTimetable(); 
+        await fetchCurrentDayOrder();
+        
+        setLoginScreenBusy(false);
         return;
-      }
+      }    
+      // 2. Fall back to student lookup
       if(studentDb.length===0){ await fetchStudents(); }
       const student = findStudentByCredentials(rollNo, dob);
-      if(!student){
-        triggerShake('loginCard');
-        setLoginScreenError('Invalid credentials.');
-        showToast('Invalid Roll Number or Date of Birth', true);
+      if(student){
+        const user = { rollNo: student.rollNo, role:'student', name: student.name };
+        localStorage.setItem(LS_USER, JSON.stringify(user));
+        setCurrentUser(user);
+        setLoginScreenBusy(false);
         return;
       }
-      const user = { role:'student', rollNo: student.rollNo, name: student.name };
-      setCurrentUser(user);
-      localStorage.setItem(LS_USER, JSON.stringify(user));
-      showToast('Welcome back, '+student.name+'!');
-      navTo('landing');
+      setLoginScreenError('Invalid Roll Number or Date of Birth');
     }catch(e){
       console.error(e);
-      setLoginScreenError('Login failed.');
-      showToast('Login failed. Please try again.', true);
-    }finally{
-      setLoginScreenBusy(false);
+      setLoginScreenError('Login failed — please try again');
     }
+    setLoginScreenBusy(false);
   }
 
   /* ---------- timetable ---------- */
