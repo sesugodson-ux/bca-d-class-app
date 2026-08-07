@@ -318,6 +318,12 @@ export default function App(){
     showToast('Class name updated');
   }
 
+  /* ================= ADMIN SETTINGS ================= */
+  const [activeAdminTab, setActiveAdminTab] = useState(null);
+  function toggleAdminTab(tabId){
+    setActiveAdminTab(function(cur){ return cur === tabId ? null : tabId; });
+  }
+
   /* ---------- student db ===== FETCHED LIVE FROM SUPABASE ('students' table) ===== */
   const [studentDb, setStudentDb] = useState([]);
   const fetchStudents = useCallback(async function(){
@@ -2455,9 +2461,13 @@ export default function App(){
               <h2 className="landing-heading">Admin Dashboard</h2>
             </div>
 
-            <section className="card">
-              <h2 className="card-title">Update Class Name</h2>
-              <p className="helper-text" style={{marginTop:0}}>This name appears in the preview message and throughout the app.</p>
+            <AdminAccordionSection
+              id="className"
+              title="Update Class Name"
+              subtitle="This name appears in the preview message and throughout the app."
+              activeTab={activeAdminTab}
+              onToggle={toggleAdminTab}
+            >
               <div style={{marginBottom:10}}>
                 <span className="current-class-pill">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -2469,13 +2479,25 @@ export default function App(){
                   value={classNameInput} onChange={function(e){ setClassNameInput(e.target.value); }} onKeyDown={function(e){ if(e.key==='Enter') saveClassNameHandler(); }} />
                 <button type="button" className="btn-add" onClick={saveClassNameHandler}>Save</button>
               </div>
-            </section>
+            </AdminAccordionSection>
 
-            <TimetableWidget timetable={timetable} currentDayOrder={currentDayOrder} onChangeDayOrder={saveCurrentDayOrder} editable={true} subjects={subjects} onSaveSlot={saveTimetableSlot} />
+            <AdminAccordionSection
+              id="dayOrder"
+              title="Today's Day Order"
+              subtitle="Set the active day order and edit the full timetable."
+              activeTab={activeAdminTab}
+              onToggle={toggleAdminTab}
+            >
+              <TimetableWidget bare timetable={timetable} currentDayOrder={currentDayOrder} onChangeDayOrder={saveCurrentDayOrder} editable={true} subjects={subjects} onSaveSlot={saveTimetableSlot} />
+            </AdminAccordionSection>
 
-            <section className="card">
-              <h2 className="card-title">Manage Subjects</h2>
-              <p className="helper-text" style={{marginTop:0}}>Subjects live in Supabase — added or removed here, they update instantly in the Attendance Report dropdown and Study Material for every device.</p>
+            <AdminAccordionSection
+              id="subjects"
+              title="Manage Subjects"
+              subtitle="Subjects live in Supabase — added or removed here, they update instantly in the Attendance Report dropdown and Study Material for every device."
+              activeTab={activeAdminTab}
+              onToggle={toggleAdminTab}
+            >
               <div className="add-row">
                 <input type="text" placeholder="e.g. Java Programming" autoComplete="off" className={shakeCls('newSubjectInput')}
                   value={newSubjectInput} onChange={function(e){ setNewSubjectInput(e.target.value); }} />
@@ -2492,11 +2514,15 @@ export default function App(){
                   );
                 })}
               </div>
-            </section>
+            </AdminAccordionSection>
 
-            <section className="card">
-              <h2 className="card-title">Manage Students</h2>
-              <p className="helper-text" style={{marginTop:0}}>Mark students who have left the college. They are hidden from active totals but stay visible (shaded) on the grid.</p>
+            <AdminAccordionSection
+              id="students"
+              title="Manage Students"
+              subtitle="Mark students who have left the college. They are hidden from active totals but stay visible (shaded) on the grid."
+              activeTab={activeAdminTab}
+              onToggle={toggleAdminTab}
+            >
               <div className="student-search-wrap">
                 <input type="text" placeholder="Search by name or roll number…" autoComplete="off" value={studentSearchQuery} onChange={function(e){ setStudentSearchQuery(e.target.value); }} />
               </div>
@@ -2518,11 +2544,15 @@ export default function App(){
                   );
                 })}
               </div>
-            </section>
+            </AdminAccordionSection>
 
-            <section className="card">
-              <h2 className="card-title">Manage Admins</h2>
-              <p className="helper-text" style={{marginTop:0}}>Admins live in Supabase. Add the next class representative so they can take over later — changes apply instantly across all devices.</p>
+            <AdminAccordionSection
+              id="admins"
+              title="Manage Admins"
+              subtitle="Admins live in Supabase. Add the next class representative so they can take over later — changes apply instantly across all devices."
+              activeTab={activeAdminTab}
+              onToggle={toggleAdminTab}
+            >
               <div className="add-row">
                 <input type="text" placeholder="Roll Number" inputMode="numeric" autoComplete="off" className={shakeCls('newAdminRoll')}
                   value={newAdminRoll} onChange={function(e){ setNewAdminRoll(e.target.value); }} />
@@ -2540,15 +2570,19 @@ export default function App(){
                   );
                 })}
               </div>
-            </section>
+            </AdminAccordionSection>
 
-            <section className="card">
-              <div className="card-title-row">
-                <h2 className="card-title">Attendance History</h2>
+            <AdminAccordionSection
+              id="history"
+              title="Attendance History"
+              subtitle="Look up a specific student's attendance record across every saved date, export individual or global reports, and manage saved entries."
+              activeTab={activeAdminTab}
+              onToggle={toggleAdminTab}
+            >
+              <div style={{display:'flex',justifyContent:'flex-end',marginBottom:8}}>
                 <button type="button" className="link-btn" onClick={handleExportPdf}>Export PDF</button>
               </div>
 
-              <p className="helper-text" style={{marginTop:0}}>Look up a specific student's attendance record across every saved date, or export their individual report as a PDF.</p>
               <div className="add-row">
                 <input type="text" inputMode="numeric" placeholder="Enter Roll Number…" autoComplete="off"
                   className={shakeCls('historySearchRoll')} value={historySearchRoll} onChange={function(e){ setHistorySearchRoll(e.target.value); }} />
@@ -2679,7 +2713,7 @@ export default function App(){
                   );
                 })}
               </div>
-            </section>
+            </AdminAccordionSection>
 
             <button type="button" className="btn btn-secondary" onClick={goLanding}>Logout / Back to Home</button>
             <p className="app-footer">App Created by: <strong>GODSON S</strong></p>
@@ -2773,6 +2807,34 @@ function DetailItem(props){
   );
 }
 
+function AdminAccordionSection({ id, title, subtitle, activeTab, onToggle, children }){
+  const isOpen = activeTab === id;
+  return (
+    <section className="card admin-accordion-item">
+      <button
+        type="button"
+        className="admin-accordion-header"
+        onClick={function(){ onToggle(id); }}
+        aria-expanded={isOpen}
+      >
+        <div className="admin-accordion-header-text">
+          <h2 className="card-title" style={{ margin: 0 }}>{title}</h2>
+          {subtitle && <p className="helper-text" style={{ margin: '4px 0 0' }}>{subtitle}</p>}
+        </div>
+        <svg
+          className="admin-accordion-chevron"
+          width="18" height="18" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+        >
+          <path d="M6 9l6 6 6-6"/>
+        </svg>
+      </button>
+      {isOpen && <div className="admin-accordion-body">{children}</div>}
+    </section>
+  );
+}
+
 function RemoveBtn(props){
   return (
     <button type="button" aria-label={props.label} onClick={props.onClick}
@@ -2783,11 +2845,13 @@ function RemoveBtn(props){
 }
 
 function TimetableWidget(props){
-  const { timetable, currentDayOrder, onChangeDayOrder, editable, subjects, onSaveSlot } = props;
+  const { timetable, currentDayOrder, onChangeDayOrder, editable, subjects, onSaveSlot, bare } = props;
   const [showAllDays, setShowAllDays] = useState(false);
   function slotValue(dayOrder, hour){ return timetable[dayOrder+'-'+hour] || ''; }
+  const Wrapper = bare ? 'div' : 'section';
+  const wrapperClassName = bare ? '' : 'card timetable-card';
   return (
-    <section className="card timetable-card">
+    <Wrapper className={wrapperClassName}>
       {!editable && (
         <div className="timetable-section" aria-label="Compact timetable view">
           <div className="timetable-top">
@@ -2843,6 +2907,6 @@ function TimetableWidget(props){
           )}
         </>
       )}
-    </section>
+    </Wrapper>
   );
 }
