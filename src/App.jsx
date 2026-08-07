@@ -767,11 +767,14 @@ export default function App(){
   /* Attendance % now simply treats every saved row as one conducted hour. */
   function getAttendancePercent(rollNo){
     if(history.length===0) return null;
+    const rollQ = normalizeRollNo(rollNo);
+    if(!rollQ) return null;
     let conducted=0, present=0;
     history.forEach(function(row){
       conducted += 1;
       const rolls = row.absent_rolls || [];
-      if(rolls.indexOf(rollNo)===-1) present += 1;
+      const isAbsent = rolls.some(function(r){ return normalizeRollNo(r)===rollQ; });
+      if(!isAbsent) present += 1;
     });
     if(conducted===0) return null;
     return Math.round((present/conducted)*1000)/10;
@@ -1557,11 +1560,11 @@ export default function App(){
      College/Department header, full student details, and a clean table of
      every date + exact hours they were absent in, driven directly by the
      flat row-per-hour history data via getStudentHistoryRows(). */
-  function handleExportStudentPdf(){
-    const rollQ = historySearchRoll.trim();
-    if(!rollQ){ triggerShake('historySearchRoll'); showToast('Enter a Roll Number to export', true); return; }
-    const student = studentDb.find(function(s){ return normalizeRollNo(s.rollNo)===normalizeRollNo(rollQ); });
-    if(!student){ triggerShake('historySearchRoll'); showToast('No student found with that Roll Number', true); return; }
+  function exportStudentAttendancePdf(rollNoInput){
+    const safeRoll = String(rollNoInput==null?'':rollNoInput).trim();
+    if(!safeRoll){ showToast('No Roll Number available to export', true); return; }
+    const student = studentDb.find(function(s){ return normalizeRollNo(s.rollNo)===normalizeRollNo(safeRoll); });
+    if(!student){ showToast('No student found with that Roll Number', true); return; }
 
     const rows = getStudentHistoryRows(student.rollNo);
     const pct = getAttendancePercent(student.rollNo);
@@ -1633,6 +1636,17 @@ export default function App(){
     if(openPrintWindow(printHtml)){
       showToast('Opening print dialog — choose "Save as PDF"');
     }
+  }
+
+  function handleExportStudentPdf(){
+    const rollQ = historySearchRoll.trim();
+    if(!rollQ){ triggerShake('historySearchRoll'); showToast('Enter a Roll Number to export', true); return; }
+    exportStudentAttendancePdf(rollQ);
+  }
+
+  function handleStudentSelfPdfDownload(){
+    const safeRoll = String(currentUser.rollNo).trim();
+    exportStudentAttendancePdf(safeRoll);
   }
 
   /* Deletes every hour-row saved for a given date (a whole day's report). */
@@ -2545,12 +2559,13 @@ export default function App(){
         )}
 
         {view==='myAttendance' && (function(){
-          const rows = getStudentHistoryRows(currentUser.rollNo);
-          const pct = getAttendancePercent(currentUser.rollNo);
+          const safeRoll = String(currentUser.rollNo).trim();
+          const rows = getStudentHistoryRows(safeRoll);
+          const pct = getAttendancePercent(safeRoll);
           return (
             <section className="view active">
               <div className="landing-intro">
-                <p className="landing-eyebrow">My Attendance · Roll No {currentUser.rollNo}</p>
+                <p className="landing-eyebrow">My Attendance · Roll No {safeRoll}</p>
                 <h2 className="landing-heading">Your Attendance Report</h2>
               </div>
 
@@ -2562,18 +2577,32 @@ export default function App(){
               )}
 
               <section className="card">
-                <h2 className="card-title">Absence Record</h2>
+                <div className="card-title-row">
+                  <h2 className="card-title">Absence Record</h2>
+                  <button type="button" className="link-btn" onClick={handleStudentSelfPdfDownload}>Download PDF</button>
+                </div>
                 {rows.length===0 && <div className="empty-state">No absences recorded — great job! Full attendance in all saved reports.</div>}
-                {rows.map(function(r){
-                  return (
-                    <div key={r.date} className="result-row">
-                      <span className="result-row-subject">{formatNiceDate(r.date)}</span>
-                      <span className={"result-row-marks"+(r.isFullDay?' low':'')}>
-                        {r.isFullDay ? 'Full Day Absent' : 'Absent — Hour '+r.hoursAbsent.join(', ')}
-                      </span>
-                    </div>
-                  );
-                })}
+                <div style={{display:'grid',gap:10}}>
+                  {rows.map(function(r){
+                    return (
+                      <div key={r.date} style={{border:'1px solid var(--panel-border)',borderRadius:12,background:'var(--panel-soft)',padding:12}}>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom: r.isFullDay ? 0 : 8}}>
+                          <div style={{fontWeight:800,color:'var(--text)',fontSize:13.5}}>{formatNiceDate(r.date)}</div>
+                          <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:999,background: r.isFullDay ? 'rgba(255,77,77,.14)' : 'rgba(255,204,0,.14)',color: r.isFullDay ? 'var(--danger)' : 'var(--warn)',border:'1px solid '+(r.isFullDay ? 'rgba(255,77,77,.3)' : 'rgba(255,204,0,.3)'),whiteSpace:'nowrap'}}>
+                            {r.isFullDay ? 'Full Day (All '+HOURS.length+' Hours)' : r.hoursAbsent.length+' Hour'+(r.hoursAbsent.length===1?'':'s')+' Missed'}
+                          </span>
+                        </div>
+                        {!r.isFullDay && (
+                          <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:2}}>
+                            {r.hoursAbsent.map(function(h){
+                              return <span key={h} style={{display:'inline-flex',alignItems:'center',justifyContent:'center',minWidth:26,height:26,padding:'0 8px',borderRadius:8,background:'rgba(255,77,77,.12)',border:'1px solid rgba(255,77,77,.28)',color:'var(--danger)',fontSize:12,fontWeight:800}}>H{h}</span>;
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </section>
 
               <button type="button" className="btn btn-secondary" onClick={goLanding}>Logout / Back to Home</button>
