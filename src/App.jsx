@@ -1706,7 +1706,11 @@ export default function App(){
       + '<div class="meta"><span>Class: <b>' + escapeHtml(entry.class_name || className) + '</b> · Date: <b>' + escapeHtml(niceDate) + '</b> · Day Order: <b>' + (entry.rows && entry.rows[0] ? entry.rows[0].day_order || '—' : currentDayOrder) + '</b></span><span>Generated: ' + escapeHtml(generatedOn) + '</span></div>'
       + '<table><thead><tr>'
       + '<th>#</th><th>Roll Number</th><th>Student Name</th>'
-      + '<th>H1</th><th>H2</th><th>H3</th><th>H4</th><th>H5</th>'
+      + HOURS.map(function(h){
+          const subjectName = hourSubjectMap[h] || '';
+          const displaySubject = subjectName ? ((/tamil/i.test(subjectName)) ? 'Tamil / OL' : subjectName) : '—';
+          return '<th style="font-size:11px;">H'+h+'<br><span style="font-size:9px;font-weight:normal;color:#64748b;">'+escapeHtml(displaySubject)+'</span></th>';
+        }).join('')
       + '</tr></thead><tbody>'
       + rowsHtml
       + '</tbody></table>'
@@ -1804,7 +1808,12 @@ export default function App(){
       + '<div class="meta"><span>Class: <b>' + escapeHtml(entry.class_name || className) + '</b> · Date: <b>' + escapeHtml(niceDate) + '</b> · Day Order: <b>' + (entry.rows && entry.rows[0] ? entry.rows[0].day_order || '—' : currentDayOrder) + '</b></span><span>Generated: ' + escapeHtml(generatedOn) + '</span></div>'
       + '<table><thead><tr>'
       + '<th>#</th><th>Roll Number</th><th>Student Name</th>'
-      + '<th>H1</th><th>H2</th><th>H3</th><th>H4</th><th>H5</th>'
+      + HOURS.map(function(h){
+          const hourRow = entry.rows.find(function(r){ return r.hour === h; });
+          const subjectName = hourRow ? hourRow.subject_name || '' : '';
+          const displaySubject = subjectName ? ((/tamil/i.test(subjectName)) ? 'Tamil / OL' : subjectName) : '—';
+          return '<th style="font-size:11px;">H'+h+'<br><span style="font-size:9px;font-weight:normal;color:#64748b;">'+escapeHtml(displaySubject)+'</span></th>';
+        }).join('')
       + '</tr></thead><tbody>'
       + rowsHtml
       + '</tbody></table>'
