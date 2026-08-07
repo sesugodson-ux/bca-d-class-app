@@ -2467,6 +2467,12 @@ export default function App(){
               subtitle="This name appears in the preview message and throughout the app."
               activeTab={activeAdminTab}
               onToggle={toggleAdminTab}
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                  <path d="M15 5l4 4"/>
+                </svg>
+              }
             >
               <div style={{marginBottom:10}}>
                 <span className="current-class-pill">
@@ -2487,6 +2493,13 @@ export default function App(){
               subtitle="Set the active day order and edit the full timetable."
               activeTab={activeAdminTab}
               onToggle={toggleAdminTab}
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="3"/>
+                  <path d="M16 2v4M8 2v4M3 10h18"/>
+                  <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>
+                </svg>
+              }
             >
               <TimetableWidget bare timetable={timetable} currentDayOrder={currentDayOrder} onChangeDayOrder={saveCurrentDayOrder} editable={true} subjects={subjects} onSaveSlot={saveTimetableSlot} />
             </AdminAccordionSection>
@@ -2497,6 +2510,12 @@ export default function App(){
               subtitle="Subjects live in Supabase — added or removed here, they update instantly in the Attendance Report dropdown and Study Material for every device."
               activeTab={activeAdminTab}
               onToggle={toggleAdminTab}
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                </svg>
+              }
             >
               <div className="add-row">
                 <input type="text" placeholder="e.g. Java Programming" autoComplete="off" className={shakeCls('newSubjectInput')}
@@ -2522,6 +2541,14 @@ export default function App(){
               subtitle="Mark students who have left the college. They are hidden from active totals but stay visible (shaded) on the grid."
               activeTab={activeAdminTab}
               onToggle={toggleAdminTab}
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+              }
             >
               <div className="student-search-wrap">
                 <input type="text" placeholder="Search by name or roll number…" autoComplete="off" value={studentSearchQuery} onChange={function(e){ setStudentSearchQuery(e.target.value); }} />
@@ -2552,6 +2579,12 @@ export default function App(){
               subtitle="Admins live in Supabase. Add the next class representative so they can take over later — changes apply instantly across all devices."
               activeTab={activeAdminTab}
               onToggle={toggleAdminTab}
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>
+                  <path d="M9 12l2 2 4-4"/>
+                </svg>
+              }
             >
               <div className="add-row">
                 <input type="text" placeholder="Roll Number" inputMode="numeric" autoComplete="off" className={shakeCls('newAdminRoll')}
@@ -2578,6 +2611,13 @@ export default function App(){
               subtitle="Look up a specific student's attendance record across every saved date, export individual or global reports, and manage saved entries."
               activeTab={activeAdminTab}
               onToggle={toggleAdminTab}
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 3v5h5"/>
+                  <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
+                  <path d="M12 7v5l4 2"/>
+                </svg>
+              }
             >
               <div>
                 <button type="button" className="link-btn" onClick={handleExportPdf}>Export PDF</button>
@@ -2713,7 +2753,7 @@ export default function App(){
                   );
                 })}
               </div>
-            </section>
+            </AdminAccordionSection>
 
             <button type="button" className="btn btn-secondary" onClick={goLanding}>Logout / Back to Home</button>
             <p className="app-footer">App Created by: <strong>GODSON S</strong></p>
@@ -2807,7 +2847,7 @@ function DetailItem(props){
   );
 }
 
-function AdminAccordionSection({ id, title, subtitle, activeTab, onToggle, children }){
+function AdminAccordionSection({ id, title, subtitle, icon, activeTab, onToggle, children }){
   const isOpen = activeTab === id;
   return (
     <section className="card admin-accordion-item">
@@ -2817,6 +2857,11 @@ function AdminAccordionSection({ id, title, subtitle, activeTab, onToggle, child
         onClick={function(){ onToggle(id); }}
         aria-expanded={isOpen}
       >
+        {icon && (
+          <span className="admin-accordion-icon" aria-hidden="true">
+            {icon}
+          </span>
+        )}
         <div className="admin-accordion-header-text">
           <h2 className="card-title" style={{ margin: 0 }}>{title}</h2>
           {subtitle && <p className="helper-text" style={{ margin: '4px 0 0' }}>{subtitle}</p>}
