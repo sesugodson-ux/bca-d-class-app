@@ -13,6 +13,46 @@ const DEFAULT_SUBJECTS = [
   "Operating Systems","Computer Networks","Web Technology","Communicative English",
   "Statistics","Tamil / Hindi","Value Education"
 ];
+const APP_MODULES = [
+  {
+    id: 'attendanceReport', name: 'Attendance Report', sub: 'Record absentees and generate daily reports',
+    defaultAdminOnly: true,
+    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l2.5 2.5L16 8.5"/><rect x="3.5" y="3.5" width="17" height="17" rx="4"/></svg>
+  },
+  {
+    id: 'studentDb', name: 'Student Database', sub: 'View and manage class student list',
+    defaultAdminOnly: true,
+    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+  },
+  {
+    id: 'adminSettings', name: 'Admin Settings', sub: 'Manage timetable, subjects, and settings',
+    defaultAdminOnly: true,
+    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a2 2 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+  },
+  {
+    id: 'studyMaterials', name: 'Study Materials', sub: 'Access class notes, syllabus, and resources',
+    defaultAdminOnly: false,
+    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+  },
+  {
+    id: 'semesterResults', name: 'Semester Results', sub: 'Check internal and external marks',
+    defaultAdminOnly: false,
+    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3 6 6 .9-4.5 4.3 1.1 6-5.6-3-5.6 3 1.1-6L3 8.9 9 8z"/></svg>
+  },
+  {
+    id: 'myAttendance', name: 'My Attendance Report', sub: 'Check your own absence record and attendance %',
+    defaultAdminOnly: false,
+    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+  }
+];
+const DEFAULT_STUDENT_PERMISSIONS = {
+  studyMaterials: true,
+  semesterResults: true,
+  myAttendance: true,
+  attendanceReport: false,
+  studentDb: false,
+  adminSettings: false
+};
 const DAY_ORDERS = [1,2,3,4,5,6];
 const HOURS = [1,2,3,4,5];
 const PART_ONE_OPTIONS = ["Tamil","French","Hindi","Sanskrit","Telugu"];
@@ -297,6 +337,32 @@ export default function App(){
     setToast({ show:true, msg, error: !!isError });
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(function(){ setToast(function(t){ return { ...t, show:false }; }); }, 2400);
+  }
+
+  /* ---------- student permissions (feature flags) ---------- */
+  const [studentPermissions, setStudentPermissions] = useState(DEFAULT_STUDENT_PERMISSIONS);
+  const fetchStudentPermissions = useCallback(async function(){
+    try{
+      const { data, error } = await supabase.from('app_settings').select('value').eq('key','student_permissions').maybeSingle();
+      if(error){ console.error(error); return; }
+      if(data && data.value){
+        const parsed = safeParse(data.value, null);
+        if(parsed) setStudentPermissions(function(sp){ return { ...DEFAULT_STUDENT_PERMISSIONS, ...sp, ...parsed }; });
+      }
+    }catch(e){ console.error(e); }
+  }, []);
+
+  async function updateStudentPermission(moduleId, value){
+    const next = { ...studentPermissions, [moduleId]: value };
+    setStudentPermissions(next);
+    try{
+      const { error } = await supabase.from('app_settings').upsert(
+        { key:'student_permissions', value: JSON.stringify(next) },
+        { onConflict:'key' }
+      );
+      if(error){ showToast('Could not save permission change', true); await fetchStudentPermissions(); return; }
+      showToast((value ? 'Enabled: ' : 'Disabled: ')+(APP_MODULES.find(function(m){ return m.id===moduleId; })||{}).name);
+    }catch(e){ console.error(e); showToast('Could not save permission change', true); await fetchStudentPermissions(); }
   }
 
   /* ---------- shake ---------- */
@@ -729,7 +795,7 @@ export default function App(){
 
   /* ---------- initial boot ---------- */
   useEffect(function(){
-    fetchSubjects(); fetchAdmins(); fetchTimetable(); fetchCurrentDayOrder(); fetchStudents();
+    fetchSubjects(); fetchAdmins(); fetchTimetable(); fetchCurrentDayOrder(); fetchStudents(); fetchStudentPermissions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(function(){ fetchLeftStudents(); }, [fetchLeftStudents]);
@@ -765,6 +831,34 @@ export default function App(){
     window.scrollTo(0,0);
   }
   function navTo(v){ setView(v); window.scrollTo(0,0); }
+
+  function handleModuleClick(moduleId){
+    const isAdmin = currentUser.role==='admin';
+    switch(moduleId){
+      case 'attendanceReport':
+        setDailyAuthenticated(true); setCurrentAdminRollNo(currentUser.rollNo); fetchSubjects(); navTo('daily');
+        break;
+      case 'studentDb':
+        navTo('database');
+        break;
+      case 'adminSettings':
+        navTo('adminDashboard');
+        break;
+      case 'studyMaterials':
+        setCurrentStudyRollNo(currentUser.rollNo); setCurrentStudyIsAdmin(isAdmin);
+        refreshStudyView().then(function(){ navTo('studyDashboard'); });
+        break;
+      case 'semesterResults':
+        setCurrentStudyRollNo(currentUser.rollNo); setCurrentStudyIsAdmin(isAdmin);
+        fetchSemesterResults(currentUser.rollNo).then(function(){ navTo('semesterResults'); });
+        break;
+      case 'myAttendance':
+        navTo('myAttendance');
+        break;
+      default:
+        break;
+    }
+  }
 
   /* ================= ATTENDANCE REPORT ================= */
   const [dailyLoginRoll, setDailyLoginRoll] = useState('');
@@ -1900,6 +1994,23 @@ export default function App(){
             </div>
             <TimetableWidget currentDayOrder={currentDayOrder} editable={false} onChangeDayOrder={function(d){ setCurrentDayOrder(d); }} timetable={timetable} />
 
+            {(function(){
+              const isAdmin = currentUser.role==='admin';
+              const visibleModules = isAdmin ? APP_MODULES : APP_MODULES.filter(function(m){ return studentPermissions[m.id]===true; });
+              const cardClasses = ['mode-card-primary','mode-card-tertiary','mode-card-secondary','mode-card-quaternary','mode-card-quinary'];
+
+              return visibleModules.map(function(m, idx){
+                return (
+                  <button key={m.id} type="button" className={'mode-card '+cardClasses[idx % cardClasses.length]} onClick={function(){ handleModuleClick(m.id); }}>
+                    <span className="mode-card-icon">{m.icon}</span>
+                    <span className="mode-card-text"><span className="mode-card-title">{m.name}</span><span className="mode-card-sub">{m.sub}</span></span>
+                    <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+                  </button>
+                );
+              });
+            })()}
+
+            {/* Legacy landing cards replaced by the permission-aware module map.
             {currentUser.role==='admin' && (
               <>
                 <button type="button" className="mode-card mode-card-primary" onClick={function(){ setDailyAuthenticated(true); setCurrentAdminRollNo(currentUser.rollNo); navTo('daily'); }}>
@@ -1920,19 +2031,21 @@ export default function App(){
                   <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
                 </button>
               </>
-            )}
+            )} */}
 
+            {/* Legacy study materials card replaced by the permission-aware module map.
             <button type="button" className="mode-card mode-card-quaternary" onClick={function(){ setCurrentStudyRollNo(currentUser.rollNo); setCurrentStudyIsAdmin(currentUser.role==='admin'); refreshStudyView().then(function(){ navTo('studyDashboard'); }); }}>
               <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ffcc00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
               <span className="mode-card-text"><span className="mode-card-title">Study Materials</span><span className="mode-card-sub">Access class notes, syllabus, and resources</span></span>
               <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
-            </button>
+            </button> */}
 
+            {/* Legacy semester results card replaced by the permission-aware module map.
             <button type="button" className="mode-card mode-card-quinary" onClick={function(){ setCurrentStudyRollNo(currentUser.rollNo); setCurrentStudyIsAdmin(currentUser.role==='admin'); fetchSemesterResults(currentUser.rollNo).then(function(){ navTo('semesterResults'); }); }}>
               <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#be78ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3 6 6 .9-4.5 4.3 1.1 6-5.6-3-5.6 3 1.1-6L3 8.9 9 8z"/></svg></span>
               <span className="mode-card-text"><span className="mode-card-title">Semester Results</span><span className="mode-card-sub">Check internal and external marks</span></span>
               <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
-            </button>
+            </button> */}
 
             <button type="button" className="btn btn-secondary" onClick={handleLogout} style={{marginTop:'20px'}}>Logout</button>
             <p className="app-footer">Created by GODSON S</p>
@@ -2431,6 +2544,43 @@ export default function App(){
           </section>
         )}
 
+        {view==='myAttendance' && (function(){
+          const rows = getStudentHistoryRows(currentUser.rollNo);
+          const pct = getAttendancePercent(currentUser.rollNo);
+          return (
+            <section className="view active">
+              <div className="landing-intro">
+                <p className="landing-eyebrow">My Attendance · Roll No {currentUser.rollNo}</p>
+                <h2 className="landing-heading">Your Attendance Report</h2>
+              </div>
+
+              {pct!=null && (
+                <div className="semester-pct-hero">
+                  <div className="pct-num">{pct}%</div>
+                  <div className="pct-label">Overall attendance across all saved reports</div>
+                </div>
+              )}
+
+              <section className="card">
+                <h2 className="card-title">Absence Record</h2>
+                {rows.length===0 && <div className="empty-state">No absences recorded — great job! Full attendance in all saved reports.</div>}
+                {rows.map(function(r){
+                  return (
+                    <div key={r.date} className="result-row">
+                      <span className="result-row-subject">{formatNiceDate(r.date)}</span>
+                      <span className={"result-row-marks"+(r.isFullDay?' low':'')}>
+                        {r.isFullDay ? 'Full Day Absent' : 'Absent — Hour '+r.hoursAbsent.join(', ')}
+                      </span>
+                    </div>
+                  );
+                })}
+              </section>
+
+              <button type="button" className="btn btn-secondary" onClick={goLanding}>Logout / Back to Home</button>
+            </section>
+          );
+        })()}
+
         {/* ===== ADMIN SETTINGS: LOGIN ===== */}
         {view==='adminLogin' && (
           <section className="view active">
@@ -2602,6 +2752,42 @@ export default function App(){
                     </div>
                   );
                 })}
+              </div>
+            </AdminAccordionSection>
+
+            <AdminAccordionSection
+              id="studentLogin"
+              title="Manage Student Login"
+              subtitle="Control exactly which features students can see and access when they log in."
+              activeTab={activeAdminTab}
+              onToggle={toggleAdminTab}
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                </svg>
+              }
+            >
+              <div className="manage-list">
+                {APP_MODULES.map(function(m){
+                  const enabled = !!studentPermissions[m.id];
+                  return (
+                    <div key={m.id} className="permission-row">
+                      <span className="permission-icon">{m.icon}</span>
+                      <div className="permission-text">
+                        <div className="permission-name">{m.name}</div>
+                        <div className="permission-sub">{m.sub}</div>
+                      </div>
+                      <ToggleSwitch
+                        checked={enabled}
+                        label={'Toggle student access to '+m.name}
+                        onChange={function(val){ updateStudentPermission(m.id, val); }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="warning-box" style={{marginTop:14}}>
+                <strong>Heads up:</strong> Enabling "Attendance Report", "Student Database", or "Admin Settings" grants students access to admin-only tools. Only enable these if you intend that.
               </div>
             </AdminAccordionSection>
 
@@ -2877,6 +3063,21 @@ function AdminAccordionSection({ id, title, subtitle, icon, activeTab, onToggle,
       </button>
       {isOpen && <div className="admin-accordion-body">{children}</div>}
     </section>
+  );
+}
+
+function ToggleSwitch({ checked, onChange, label }){
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={"ios-toggle"+(checked?' on':'')}
+      onClick={function(){ onChange(!checked); }}
+    >
+      <span className="ios-toggle-thumb"></span>
+    </button>
   );
 }
 
