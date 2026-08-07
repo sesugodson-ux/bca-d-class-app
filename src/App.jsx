@@ -72,8 +72,12 @@ function numericRollCompare(a, b){
 }
 
 function languageBadgeFor(student){
-  const lang = (student.partOne || '').trim();
-  if(!lang || lang.toLowerCase() === 'tamil') return null;
+  if(!student) return null;
+  const raw = student.partOne;
+  if(raw == null) return null;
+  const lang = String(raw).trim();
+  if(!lang) return null;
+  if(lang.toLowerCase() === 'tamil') return null;
   return lang.slice(0, 2).toUpperCase();
 }
 
@@ -1637,7 +1641,9 @@ export default function App(){
       return { hour: h, isRecorded: recordedHourSet.has(h) };
     });
 
-    const students = studentDb.slice().sort(function(a, b){ return numericRollCompare(a.rollNo, b.rollNo); });
+    const students = studentDb
+      .filter(function(s){ return s.name !== 'XX' && leftIds.indexOf(s.id) === -1; })
+      .sort(function(a, b){ return numericRollCompare(a.rollNo, b.rollNo); });
 
     const rowsHtml = students.map(function(student, i){
       let tds = '<td class="num">'+(i + 1)+'</td>'
@@ -1725,7 +1731,9 @@ export default function App(){
       return { hour: h, isRecorded: recordedHourSet.has(h) };
     });
 
-    const allStudents = studentDb.slice().sort(function(a, b){ return numericRollCompare(a.rollNo, b.rollNo); });
+    const allStudents = studentDb
+      .filter(function(s){ return s.name !== 'XX' && leftIds.indexOf(s.id) === -1; })
+      .sort(function(a, b){ return numericRollCompare(a.rollNo, b.rollNo); });
     const absenteeStudents = allStudents.filter(function(student) {
       return recordedHours.some(function(rh) {
         return rh.isRecorded && (hoursMap[rh.hour] || []).includes(student.rollNo);
