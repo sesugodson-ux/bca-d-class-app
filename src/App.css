@@ -183,6 +183,21 @@ button{font-family:inherit;}
   border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;
   padding:7px 9px;min-height:36px;
 }
+.timetable-admin-hour-row select{
+  background:rgba(255,255,255,.035);border:1px solid var(--panel-border);
+  border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;
+  padding:7px 9px;min-height:36px;
+  appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238696a0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 8px center;background-size:16px;
+  padding-right:28px;cursor:pointer;
+  transition:border-color .18s var(--ease),background .18s var(--ease),box-shadow .18s var(--ease);
+}
+.timetable-admin-hour-row select:focus{
+  outline:none;border-color:var(--accent);background-color:rgba(0,168,132,.06);
+  box-shadow:0 0 0 3px rgba(0,168,132,.16);
+}
+.timetable-admin-hour-row select option{background:var(--panel);color:var(--text);}
 @media (max-width: 640px){
   .timetable-dark{min-width:480px;font-size:.82rem;}
   .timetable-dark th,

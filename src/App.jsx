@@ -873,6 +873,7 @@ export default function App(){
     const record = {
       date: dateVal,
       hour: hour,
+      day_order: currentDayOrder,
       subject_name: subjectVal,
       class_name: className,
       absent_rolls: absentRolls,
@@ -1656,21 +1657,22 @@ export default function App(){
           return;
         }
 
-        const isAbsent = (hoursMap[rh.hour] || []).indexOf(student.rollNo) !== -1;
-        if (isAbsent) {
-          tds += '<td style="text-align:center;color:#dc2626;font-weight:800;">A</td>';
-          return;
-        }
-
         const isTamilHour = /tamil/i.test(hourSubjectMap[rh.hour] || '');
         const isOtherLang = !!(student.partOne && student.partOne.trim().toLowerCase() !== 'tamil');
 
         if (isTamilHour && isOtherLang) {
           const badge = student.partOne.trim().slice(0, 2).toUpperCase();
           tds += '<td style="text-align:center;color:#f97316;font-weight:800;">'+escapeHtml(badge)+'</td>';
-        } else {
-          tds += '<td style="text-align:center;color:#16a34a;font-weight:800;">P</td>';
+          return;
         }
+
+        const isAbsent = (hoursMap[rh.hour] || []).indexOf(student.rollNo) !== -1;
+        if (isAbsent) {
+          tds += '<td style="text-align:center;color:#dc2626;font-weight:800;">A</td>';
+          return;
+        }
+
+        tds += '<td style="text-align:center;color:#16a34a;font-weight:800;">P</td>';
       });
       return '<tr>'+tds+'</tr>';
     }).join('');
@@ -1701,7 +1703,7 @@ export default function App(){
       + '<div class="dept-name">Department of Computer Applications (BCA)</div>'
       + '<div class="report-title">Full Day Attendance Master Register</div>'
       + '</div>'
-      + '<div class="meta"><span>Class: <b>' + escapeHtml(entry.class_name || className) + '</b> · Date: <b>' + escapeHtml(niceDate) + '</b></span><span>Generated: ' + escapeHtml(generatedOn) + '</span></div>'
+      + '<div class="meta"><span>Class: <b>' + escapeHtml(entry.class_name || className) + '</b> · Date: <b>' + escapeHtml(niceDate) + '</b> · Day Order: <b>' + (entry.rows && entry.rows[0] ? entry.rows[0].day_order || '—' : currentDayOrder) + '</b></span><span>Generated: ' + escapeHtml(generatedOn) + '</span></div>'
       + '<table><thead><tr>'
       + '<th>#</th><th>Roll Number</th><th>Student Name</th>'
       + '<th>H1</th><th>H2</th><th>H3</th><th>H4</th><th>H5</th>'
@@ -1753,11 +1755,19 @@ export default function App(){
           if (!rh.isRecorded) {
             tds += '<td style="text-align:center;color:#94a3b8;font-weight:600;">—</td>';
           } else {
-            const isAbsent = (hoursMap[rh.hour] || []).includes(student.rollNo);
-            if (isAbsent) {
-              tds += '<td style="text-align:center;color:#dc2626;font-weight:800;">A</td>';
+            const isTamilHour = /tamil/i.test((entry.rows.find(function(r){ return r.hour === rh.hour; }) || {}).subject_name || '');
+            const isOtherLang = !!(student.partOne && student.partOne.trim().toLowerCase() !== 'tamil');
+
+            if (isTamilHour && isOtherLang) {
+              const badge = student.partOne.trim().slice(0, 2).toUpperCase();
+              tds += '<td style="text-align:center;color:#f97316;font-weight:800;">'+escapeHtml(badge)+'</td>';
             } else {
-              tds += '<td style="text-align:center;color:#16a34a;font-weight:800;">P</td>';
+              const isAbsent = (hoursMap[rh.hour] || []).includes(student.rollNo);
+              if (isAbsent) {
+                tds += '<td style="text-align:center;color:#dc2626;font-weight:800;">A</td>';
+              } else {
+                tds += '<td style="text-align:center;color:#16a34a;font-weight:800;">P</td>';
+              }
             }
           }
         });
@@ -1791,7 +1801,7 @@ export default function App(){
       + '<div class="dept-name">Department of Computer Applications (BCA)</div>'
       + '<div class="report-title">Full Day Absentees Report</div>'
       + '</div>'
-      + '<div class="meta"><span>Class: <b>' + escapeHtml(entry.class_name || className) + '</b> · Date: <b>' + escapeHtml(niceDate) + '</b></span><span>Generated: ' + escapeHtml(generatedOn) + '</span></div>'
+      + '<div class="meta"><span>Class: <b>' + escapeHtml(entry.class_name || className) + '</b> · Date: <b>' + escapeHtml(niceDate) + '</b> · Day Order: <b>' + (entry.rows && entry.rows[0] ? entry.rows[0].day_order || '—' : currentDayOrder) + '</b></span><span>Generated: ' + escapeHtml(generatedOn) + '</span></div>'
       + '<table><thead><tr>'
       + '<th>#</th><th>Roll Number</th><th>Student Name</th>'
       + '<th>H1</th><th>H2</th><th>H3</th><th>H4</th><th>H5</th>'
