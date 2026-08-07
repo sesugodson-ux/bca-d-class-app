@@ -329,6 +329,12 @@ export default function App(){
       return function(){ clearTimeout(timer); };
     }
   }, [view]);
+  useEffect(function(){
+    if(view==='myAttendance' && history.length===0){
+      fetchHistory();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   /* ---------- toast ---------- */
   const [toast, setToast] = useState({ show:false, msg:'', error:false });
@@ -559,6 +565,7 @@ export default function App(){
         const user = { rollNo: student.rollNo, role:'student', name: student.name };
         localStorage.setItem(LS_USER, JSON.stringify(user));
         setCurrentUser(user);
+        await fetchHistory();
         setLoginScreenBusy(false);
         return;
       }
@@ -856,7 +863,8 @@ export default function App(){
         fetchSemesterResults(currentUser.rollNo).then(function(){ navTo('semesterResults'); });
         break;
       case 'myAttendance':
-        navTo('myAttendance');
+        Promise.all([fetchHistory(), studentDb.length===0 ? fetchStudents() : Promise.resolve()])
+          .then(function(){ navTo('myAttendance'); });
         break;
       default:
         break;
