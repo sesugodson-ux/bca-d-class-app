@@ -71,6 +71,12 @@ function numericRollCompare(a, b){
   return safeA - safeB;
 }
 
+function languageBadgeFor(student){
+  const lang = (student.partOne || '').trim();
+  if(!lang || lang.toLowerCase() === 'tamil') return null;
+  return lang.slice(0, 2).toUpperCase();
+}
+
 /* Normalizes a roll number for comparison purposes: trims whitespace,
    strips any internal spaces, and lower-cases it. This lets login /
    lookup logic match roll numbers even if they carry stray whitespace
@@ -1617,11 +1623,14 @@ export default function App(){
   function handleExportPdfForDate(entry) {
     const generatedOn = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
     const niceDate = formatNiceDate(entry.date);
+
     const hoursMap = {};
+    const hourSubjectMap = {};
     const recordedHourSet = new Set();
     entry.rows.forEach(function(row){
       recordedHourSet.add(Number(row.hour));
       hoursMap[row.hour] = row.absent_rolls || [];
+      hourSubjectMap[row.hour] = row.subject_name || '';
     });
 
     const recordedHours = HOURS.map(function(h){
@@ -1638,13 +1647,23 @@ export default function App(){
       recordedHours.forEach(function(rh){
         if (!rh.isRecorded) {
           tds += '<td style="text-align:center;color:#94a3b8;font-weight:600;">—</td>';
+          return;
+        }
+
+        const isAbsent = (hoursMap[rh.hour] || []).indexOf(student.rollNo) !== -1;
+        if (isAbsent) {
+          tds += '<td style="text-align:center;color:#dc2626;font-weight:800;">A</td>';
+          return;
+        }
+
+        const isTamilHour = /tamil/i.test(hourSubjectMap[rh.hour] || '');
+        const isOtherLang = !!(student.partOne && student.partOne.trim().toLowerCase() !== 'tamil');
+
+        if (isTamilHour && isOtherLang) {
+          const badge = student.partOne.trim().slice(0, 2).toUpperCase();
+          tds += '<td style="text-align:center;color:#f97316;font-weight:800;">'+escapeHtml(badge)+'</td>';
         } else {
-          const isAbsent = (hoursMap[rh.hour] || []).indexOf(student.rollNo) !== -1;
-          if (isAbsent) {
-            tds += '<td style="text-align:center;color:#dc2626;font-weight:800;">A</td>';
-          } else {
-            tds += '<td style="text-align:center;color:#16a34a;font-weight:800;">P</td>';
-          }
+          tds += '<td style="text-align:center;color:#16a34a;font-weight:800;">P</td>';
         }
       });
       return '<tr>'+tds+'</tr>';
@@ -1949,29 +1968,41 @@ export default function App(){
               </div>
               <p className="helper-text" style={{marginTop:0}}>Tap a roll number to cycle Present → Absent → Present. Left students and unresolved "XX" entries stay visible but shaded and disabled.</p>
               <div className="attendance-grid" style={{ display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:8 }}>
-                {gridStudents.map(function(s){
-                  const isXX = s.name === 'XX';
-                  const isLeft = leftIds.indexOf(s.id) !== -1;
-                  const isDisabled = isXX || isLeft;
-                  const state = rollState[s.id] || 'present';
-                  const displayNum = (s.rollNo && String(s.rollNo).trim() !== '') ? String(s.rollNo).slice(-2) : '—';
+                {(function(){
+                  const isTamilHour = /tamil/i.test(subjectVal || '');
+                  return gridStudents.map(function(s){
+                    const isXX = s.name === 'XX';
+                    const isLeft = leftIds.indexOf(s.id) !== -1;
+                    const isDisabled = isXX || isLeft;
+                    const state = rollState[s.id] || 'present';
+                    const displayNum = (s.rollNo && String(s.rollNo).trim() !== '') ? String(s.rollNo).slice(-2) : '—';
+                    const badge = (isTamilHour && !isDisabled) ? languageBadgeFor(s) : null;
 
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className={
-                        "roll-btn"
-                        + (isDisabled ? ' state-left' : (state === 'absent' ? ' state-absent' : ''))
-                      }
-                      title={(isXX ? 'Unresolved roll' : s.name) + ' · ' + s.rollNo + (isLeft ? ' (Left)' : '') + (isXX ? ' (XX)' : '')}
-                      aria-label={(isXX ? 'Unresolved' : s.name) + (isDisabled ? ' — disabled' : ' — ' + state)}
-                      disabled={isDisabled}
-                      onClick={function(){ if(!isDisabled) cycleRollState(s.id); }}>
-                      {displayNum}
-                    </button>
-                  );
-                })}
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className={
+                          "roll-btn"
+                          + (isDisabled ? ' state-left' : (state === 'absent' ? ' state-absent' : ''))
+                        }
+                        title={(isXX ? 'Unresolved roll' : s.name) + ' · ' + s.rollNo + (isLeft ? ' (Left)' : '') + (isXX ? ' (XX)' : '') + (badge ? ' · '+s.partOne : '')}
+                        aria-label={(isXX ? 'Unresolved' : s.name) + (isDisabled ? ' — disabled' : ' — ' + state)}
+                        disabled={isDisabled}
+                        onClick={function(){ if(!isDisabled) cycleRollState(s.id); }}>
+                        {displayNum}
+                        {badge && (
+                          <span style={{
+                            position:'absolute', bottom:2, left:0, right:0, textAlign:'center',
+                            fontSize:9, opacity:0.8, fontWeight:700, lineHeight:1, pointerEvents:'none'
+                          }}>
+                            {badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  });
+                })()}
               </div>
               <div className="stats-strip">
                 <StatBox label="Enrolled" value={summary.totalEnrolled} />
