@@ -1645,7 +1645,8 @@ export default function App(){
   }
 
   function handleStudentSelfPdfDownload(){
-    exportStudentAttendancePdf(currentUser.rollNo);
+    const safeRoll = String(currentUser.rollNo).trim();
+    exportStudentAttendancePdf(safeRoll);
   }
 
   /* Deletes every hour-row saved for a given date (a whole day's report). */
@@ -2578,7 +2579,7 @@ export default function App(){
               <section className="card">
                 <div className="card-title-row">
                   <h2 className="card-title">Absence Record</h2>
-                  <button type="button" className="link-btn" onClick={handleStudentSelfPdfDownload}>Download My PDF</button>
+                  <button type="button" className="link-btn" onClick={handleStudentSelfPdfDownload}>Download PDF</button>
                 </div>
                 {rows.length===0 && <div className="empty-state">No absences recorded — great job! Full attendance in all saved reports.</div>}
                 <div style={{display:'grid',gap:10}}>
