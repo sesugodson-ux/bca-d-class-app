@@ -612,34 +612,3 @@ button{font-family:inherit;}
   border:1px solid rgba(0,168,132,.3);
 }
 .attendance-pct-chip.low{background:rgba(255,77,77,.12);color:var(--danger);border-color:rgba(255,77,77,.3);}
-
-/* ===== ADMIN DASHBOARD ACCORDION ===== */
-.admin-accordion-item{
-  padding:0;
-  overflow:hidden;
-}
-.admin-accordion-header{
-  width:100%;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  background:none;
-  border:none;
-  cursor:pointer;
-  padding:18px;
-  text-align:left;
-  color:inherit;
-  font:inherit;
-}
-.admin-accordion-header:hover{background:rgba(255,255,255,.03);}
-.admin-accordion-header-text{flex:1 1 auto;min-width:0;}
-.admin-accordion-chevron{
-  flex:0 0 auto;
-  color:var(--text-dim);
-  transition:transform .2s var(--ease);
-}
-.admin-accordion-body{
-  padding:0 18px 18px;
-  animation:viewFade .18s var(--ease);
-}

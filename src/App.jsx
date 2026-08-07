@@ -2579,7 +2579,7 @@ export default function App(){
               activeTab={activeAdminTab}
               onToggle={toggleAdminTab}
             >
-              <div style={{display:'flex',justifyContent:'flex-end',marginBottom:8}}>
+              <div>
                 <button type="button" className="link-btn" onClick={handleExportPdf}>Export PDF</button>
               </div>
 
@@ -2713,7 +2713,7 @@ export default function App(){
                   );
                 })}
               </div>
-            </AdminAccordionSection>
+            </section>
 
             <button type="button" className="btn btn-secondary" onClick={goLanding}>Logout / Back to Home</button>
             <p className="app-footer">App Created by: <strong>GODSON S</strong></p>
