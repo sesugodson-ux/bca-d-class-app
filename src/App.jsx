@@ -2080,6 +2080,7 @@ export default function App(){
               <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
             </button> */}
 
+            <DisclaimerNote />
             <button type="button" className="btn btn-secondary" onClick={handleLogout} style={{marginTop:'20px'}}>Logout</button>
             <p className="app-footer">Created by GODSON S</p>
           </section>
@@ -2597,7 +2598,6 @@ export default function App(){
               );
             })}
 
-            <DisclaimerNote />
             <button type="button" className="btn btn-secondary" onClick={goLanding} style={{marginTop:8}}>Logout / Back to Home</button>
           </section>
         )}
@@ -2649,7 +2649,6 @@ export default function App(){
                 </div>
               </section>
 
-              <DisclaimerNote />
               <button type="button" className="btn btn-secondary" onClick={goLanding}>Logout / Back to Home</button>
             </section>
           );
