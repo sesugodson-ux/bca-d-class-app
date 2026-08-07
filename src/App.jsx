@@ -4,7 +4,6 @@ import './App.css';
 
 const XX_IDS = ["23","71"];
 
-const LS_THEME    = 'bca_theme';
 const LS_CLASS    = 'bca_class_name';
 
 const DEFAULT_CLASS = '2 B.C.A. D';
@@ -156,7 +155,7 @@ function groupHistoryByDate(rows){
 const STUDY_TABLE = 'study_materials';
 const STUDY_BUCKET = 'materials';
 
-function LoginScreen({ roll, dob, busy, error, onRollChange, onDobChange, onSubmit, theme, sectionLabel, onToggleTheme }){
+function LoginScreen({ roll, dob, busy, error, onRollChange, onDobChange, onSubmit, sectionLabel }){
   const rollInputRef = useRef(null);
   useEffect(function(){
     if(rollInputRef.current){
@@ -165,7 +164,7 @@ function LoginScreen({ roll, dob, busy, error, onRollChange, onDobChange, onSubm
   }, []);
 
   return (
-    <div className="app" data-theme={theme} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="app" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <header className="app-header" style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--panel-border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: 40, height: 40, background: '#10b981', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#022c22', boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)' }}>
@@ -177,9 +176,6 @@ function LoginScreen({ roll, dob, busy, error, onRollChange, onDobChange, onSubm
           <h1 style={{ fontSize: '20px', fontWeight: 800, margin: 0, color: 'var(--text)' }}>BCA App</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button type="button" onClick={onToggleTheme} style={{ background: 'var(--panel)', border: '1px solid var(--panel-border)', borderRadius: '10px', padding: '8px', cursor: 'pointer', color: 'var(--text)' }}>
-            {theme === 'dark' ? '🌙' : '☀️'}
-          </button>
           <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--primary)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ width: 6, height: 6, background: 'var(--primary)', borderRadius: '50%' }}></span>
             {sectionLabel}
@@ -252,11 +248,6 @@ function LoginScreen({ roll, dob, busy, error, onRollChange, onDobChange, onSubm
 }
 
 export default function App(){
-  /* ---------- theme ---------- */
-  const [theme, setTheme] = useState(function(){ return localStorage.getItem(LS_THEME) || 'dark'; });
-  useEffect(function(){ localStorage.setItem(LS_THEME, theme); }, [theme]);
-  function toggleTheme(){ setTheme(function(t){ return t==='dark' ? 'light' : 'dark'; }); }
-
   const LS_USER = 'bca_app_user';
   const [currentUser, setCurrentUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -1868,16 +1859,14 @@ export default function App(){
         onDobChange={setLoginScreenDob}
         onRollChange={setLoginScreenRoll}
         onSubmit={attemptUnifiedLogin}
-        onToggleTheme={toggleTheme}
         roll={loginScreenRoll}
         sectionLabel={className}
-        theme={theme}
       />
     );
   }
 
   return (
-    <div className="app" data-theme={theme}>
+    <div className="app">
       <header className="app-header">
         <div className="header-content">
           {view!=='landing' && (
@@ -1891,9 +1880,6 @@ export default function App(){
           <div className="header-text">
             <h1>BCA App</h1>
           </div>
-          <button type="button" className="theme-toggle-btn" onClick={toggleTheme} aria-label="Toggle theme">
-            {theme==='dark' ? '🌙' : '🌞'}
-          </button>
           <div className="status-pill"><span className="status-dot"></span><span>{className}</span></div>
         </div>
       </header>
