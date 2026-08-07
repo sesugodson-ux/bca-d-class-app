@@ -586,6 +586,10 @@ export default function App(){
   function toggleHistoryExpand(date){
     setExpandedHistoryDate(function(cur){ return cur === date ? null : date; });
   }
+  const [expandedHistoryHours, setExpandedHistoryHours] = useState({});
+  function toggleHistoryHourExpand(key){
+    setExpandedHistoryHours(function(s){ return { ...s, [key]: !s[key] }; });
+  }
 
   const groupedHistory = useMemo(function(){ return groupHistoryByDate(history); }, [history]);
 
@@ -1476,10 +1480,12 @@ export default function App(){
       : rows.map(function(r){
           const pillCls = r.isFullDay ? 'pill-absent' : 'pill-partial';
           const label = r.isFullDay ? 'Full Day Absent' : 'Absent — Hour '+r.hoursAbsent.join(', ');
+          const dayOrderRow = history.find(function(h){ return h.date === r.date && h.day_order != null; });
+          const dayOrderVal = dayOrderRow ? dayOrderRow.day_order : '—';
           return (
             '<tr>'
             + '<td>'+escapeHtml(formatNiceDate(r.date))+'</td>'
-            + '<td class="num">'+escapeHtml(r.hoursAbsent.join(', '))+'</td>'
+            + '<td class="num">'+escapeHtml(dayOrderVal)+'</td>'
             + '<td><span class="pill '+pillCls+'">'+escapeHtml(label)+'</span></td>'
             + '</tr>'
           );
@@ -1528,7 +1534,7 @@ export default function App(){
       + '<tr><td class="label">Overall Attendance %</td><td><b>'+(pct!=null ? escapeHtml(pct)+'%' : '—')+'</b></td></tr>'
       + '</tbody></table>'
       + '<h2>Absence Record</h2>'
-      + '<table><thead><tr><th>Date</th><th>Hour(s) Absent</th><th>Status</th></tr></thead>'
+      + '<table><thead><tr><th>Date</th><th>Day Order</th><th>Status</th></tr></thead>'
       + '<tbody>'+rowsHtml+'</tbody></table>'
       + '<div class="footer">BCA Class Portal Record · Student-managed internal utility report. May contain minor discrepancies compared to official college portals.</div>'
       + '</body></html>';
@@ -2624,12 +2630,26 @@ export default function App(){
                             {hourWiseBreakdown.map(function(hb){
                               const hourLabel = 'Hour '+hb.hour + (hb.subject ? ' — '+hb.subject : '');
                               const absentLabel = hb.absentees.length===0 ? 'No absentees recorded' : hb.absentees.length+' absentee'+(hb.absentees.length===1 ? '' : 's');
+                              const hourKey = dateEntry.date+'-'+hb.hour;
+                              const isHourOpen = !!expandedHistoryHours[hourKey];
                               return (
                                 <div key={hb.hour} style={{border:'1px solid var(--panel-border)',borderRadius:12,background:'var(--panel-soft)',padding:12}}>
-                                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:8}}>
-                                    <div>
-                                      <div style={{fontWeight:800,color:'var(--accent)',marginBottom:4}}>{hourLabel}</div>
-                                      <div style={{fontSize:12,color:'var(--text-dim)'}}>{hb.hasData ? absentLabel : 'Hour '+hb.hour+' — Not recorded'}</div>
+                                  <div
+                                    style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom: hb.hasData ? 8 : 0,cursor: hb.hasData ? 'pointer' : 'default'}}
+                                    onClick={function(){ if(hb.hasData) toggleHistoryHourExpand(hourKey); }}
+                                  >
+                                    <div style={{display:'flex',alignItems:'flex-start',gap:8}}>
+                                      {hb.hasData && (
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"
+                                          strokeLinecap="round" strokeLinejoin="round"
+                                          style={{marginTop:4,flex:'0 0 auto',color:'var(--text-dim)',transition:'transform .18s var(--ease)',transform: isHourOpen ? 'rotate(180deg)' : 'rotate(0deg)'}}>
+                                          <path d="M6 9l6 6 6-6"/>
+                                        </svg>
+                                      )}
+                                      <div>
+                                        <div style={{fontWeight:800,color:'var(--accent)',marginBottom:4}}>{hourLabel}</div>
+                                        <div style={{fontSize:12,color:'var(--text-dim)'}}>{hb.hasData ? absentLabel : 'Hour '+hb.hour+' — Not recorded'}</div>
+                                      </div>
                                     </div>
                                     {hb.hasData && (
                                       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
@@ -2640,7 +2660,7 @@ export default function App(){
                                     )}
                                   </div>
 
-                                  {hb.hasData ? (
+                                  {hb.hasData && isHourOpen ? (
                                     hb.absentees.length===0 ? (
                                       <div className="empty-state" style={{margin:0,padding:0,border:'none',background:'transparent'}}>
                                         No absentees recorded for this hour.
@@ -2656,11 +2676,7 @@ export default function App(){
                                         })}
                                       </div>
                                     )
-                                  ) : (
-                                    <div style={{display:'inline-flex',alignItems:'center',padding:'4px 10px',borderRadius:999,background:'var(--panel)',border:'1px solid var(--panel-border)',color:'var(--text-dim)',fontSize:12,fontWeight:700}}>
-                                      Hour {hb.hour} — Not recorded
-                                    </div>
-                                  )}
+                                  ) : null}
                                 </div>
                               );
                             })}
