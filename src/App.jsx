@@ -2597,6 +2597,7 @@ export default function App(){
               );
             })}
 
+            <DisclaimerNote />
             <button type="button" className="btn btn-secondary" onClick={goLanding} style={{marginTop:8}}>Logout / Back to Home</button>
           </section>
         )}
@@ -2648,6 +2649,7 @@ export default function App(){
                 </div>
               </section>
 
+              <DisclaimerNote />
               <button type="button" className="btn btn-secondary" onClick={goLanding}>Logout / Back to Home</button>
             </section>
           );
@@ -3192,6 +3194,16 @@ function RemoveBtn(props){
       style={{width:20,height:20,borderRadius:'50%',border:'none',flex:'0 0 auto',background:'rgba(255,255,255,0.08)',color:'var(--text-dim)',cursor:'pointer',fontSize:13,lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center'}}>
       &#215;
     </button>
+  );
+}
+
+function DisclaimerNote(){
+  return (
+    <div className="disclaimer-note">
+      <p>
+        <strong>Disclaimer:</strong> This app is managed independently by the Class Representatives (CRs) for reference purposes only. It may contain discrepancies. For official academic attendance and records, please refer to the official college ERP or office portal.
+      </p>
+    </div>
   );
 }
 

@@ -639,6 +639,25 @@ button{font-family:inherit;}
   color:var(--text);
   letter-spacing:.1px;
 }
+.disclaimer-note{
+  border-top:1px solid var(--panel-border);
+  margin-top:22px;
+  padding-top:14px;
+}
+.disclaimer-note p{
+  margin:0;
+  font-size:11.5px;
+  line-height:1.4;
+  color:var(--text-dim);
+  text-align:center;
+  max-width:480px;
+  margin-left:auto;
+  margin-right:auto;
+}
+.disclaimer-note strong{
+  color:var(--text-dim);
+  font-weight:700;
+}
 
 .permission-row{
   display:flex;align-items:center;gap:12px;
