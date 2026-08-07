@@ -2584,10 +2584,7 @@ export default function App(){
                       return (
                         <div key={m.id} className="manage-row study-material-row">
                           <span className="manage-row-text">
-                            {currentStudyIsAdmin
-                              ? m.file_name
-                              : <a href={m.file_url} target="_blank" rel="noopener noreferrer">📄 {m.file_name}</a>
-                            }
+                            <a href={m.file_url} target="_blank" rel="noopener noreferrer">📄 {m.file_name}</a>
                           </span>
                           {currentStudyIsAdmin && (
                             <RemoveBtn label={'Delete '+m.file_name} onClick={function(){ handleDeleteMaterial(m); }} />
