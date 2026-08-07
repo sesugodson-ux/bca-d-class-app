@@ -1088,6 +1088,17 @@ export default function App(){
   const [studyMaterialFile, setStudyMaterialFile] = useState(null);
   const [studyUploading, setStudyUploading] = useState(false);
 
+  /* ---------- study dashboard accordion state ---------- */
+  const [activeStudyTab, setActiveStudyTab] = useState(null);
+  function toggleStudyTab(tabId){
+    setActiveStudyTab(function(cur){ return cur === tabId ? null : tabId; });
+  }
+
+  const [expandedRepoSubject, setExpandedRepoSubject] = useState(null);
+  function toggleRepoSubject(name){
+    setExpandedRepoSubject(function(cur){ return cur === name ? null : name; });
+  }
+
   function goStudyRoleSelect(){
     setStudyLoginRoll(''); setStudyLoginDob('');
     navTo('studyRoleSelect');
@@ -2470,9 +2481,20 @@ export default function App(){
             </div>
 
             {currentStudyIsAdmin && (
-              <section className="card">
-                <h2 className="card-title">Add Subject</h2>
-                <p className="helper-text" style={{marginTop:0}}>Create a subject shared live via Supabase — appears instantly in Attendance Report and Study Material for everyone.</p>
+              <AdminAccordionSection
+                id="addSubject"
+                title="Add Subject"
+                subtitle="Create a subject shared live via Supabase — appears instantly in Attendance Report and Study Material for everyone."
+                activeTab={activeStudyTab}
+                onToggle={toggleStudyTab}
+                icon={
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                    <path d="M9 8h6M9 12h6"/>
+                  </svg>
+                }
+              >
                 <div className="add-row">
                   <input type="text" placeholder="e.g. Data Structures" autoComplete="off" className={shakeCls('studyNewSubject')}
                     value={studyNewSubject} onChange={function(e){ setStudyNewSubject(e.target.value); }} />
@@ -2489,13 +2511,23 @@ export default function App(){
                     );
                   })}
                 </div>
-              </section>
+              </AdminAccordionSection>
             )}
 
             {currentStudyIsAdmin && (
-              <section className="card">
-                <h2 className="card-title">Upload Material</h2>
-                <p className="helper-text" style={{marginTop:0}}>Pick a subject and upload a PDF, PPT, or Doc file. Files upload directly to the Supabase Storage bucket <code>materials</code>.</p>
+              <AdminAccordionSection
+                id="upload"
+                title="Upload Material"
+                subtitle="Pick a subject and upload a PDF, PPT, or Doc file directly to Supabase Storage."
+                activeTab={activeStudyTab}
+                onToggle={toggleStudyTab}
+                icon={
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3v12"/><path d="M7 8l5-5 5 5"/>
+                    <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+                  </svg>
+                }
+              >
                 <div className="stack-fields">
                   <div className="field"><label>Subject</label>
                     <select className={shakeCls('studyMaterialSubject')} value={studyMaterialSubject} onChange={function(e){ setStudyMaterialSubject(e.target.value); }}>
@@ -2514,52 +2546,61 @@ export default function App(){
                 <button type="button" className="btn-add btn-add-block" disabled={studyUploading} onClick={handleUploadMaterial}>
                   {studyUploading ? 'Uploading…' : 'Upload Material'}
                 </button>
-              </section>
+              </AdminAccordionSection>
             )}
 
-            <section className="card">
-              <div className="card-title-row">
-                <h2 className="card-title">Repository</h2>
-                <span className="helper-text" style={{margin:0}}>{studyCache.filter(function(r){ return r.file_url; }).length} items</span>
-              </div>
-              {subjects.length===0 && (
+            <section className="card-title-row" style={{margin:'22px 4px 12px'}}>
+              <h2 className="card-title" style={{margin:0}}>Repository</h2>
+              <span className="helper-text" style={{margin:0}}>{studyCache.filter(function(r){ return r.file_url; }).length} items</span>
+            </section>
+
+            {subjects.length===0 && (
+              <div className="card">
                 <div className="empty-state">
                   {currentStudyIsAdmin ? 'No subjects yet — add one above to start uploading material.' : 'No study material has been shared yet. Check back soon.'}
                 </div>
-              )}
-              {subjects.map(function(subject){
-                const subjectId = subjectIdMap[subject];
-                const materialsForSubject = studyCache.filter(function(m){
-                  const relationSubjectName = Array.isArray(m.subjects) ? m.subjects[0]?.subject_name : m.subjects?.subject_name;
-                  const rowSubjectId = m.subject_id != null ? Number(m.subject_id) : null;
-                  return (subjectId != null && rowSubjectId===Number(subjectId)) || m.subject_name===subject || relationSubjectName===subject;
-                }).filter(function(m){ return m.file_url; });
-                return (
-                  <div key={subject} className="study-subject-group">
-                    <div className="study-subject-heading">
-                      <span>{subject}</span>
-                      <span className="study-count-pill">{materialsForSubject.length} {materialsForSubject.length===1?'file':'files'}</span>
-                    </div>
-                    <div className="manage-list" style={{marginTop:0}}>
-                      {materialsForSubject.length===0 && <div className="empty-state">No material uploaded for this subject yet.</div>}
-                      {materialsForSubject.map(function(m){
-                        return (
-                          <div key={m.id} className="manage-row study-material-row">
-                            <span className="manage-row-text">
-                              <a href={m.file_url} target="_blank" rel="noopener noreferrer">📄 {m.file_name}</a>
-                            </span>
-                            {currentStudyIsAdmin && (
-                              <RemoveBtn label={'Delete '+m.file_name} onClick={function(){ handleDeleteMaterial(m); }} />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+              </div>
+            )}
+
+            {subjects.map(function(subject){
+              const subjectId = subjectIdMap[subject];
+              const materialsForSubject = studyCache.filter(function(m){
+                const relationSubjectName = Array.isArray(m.subjects) ? m.subjects[0]?.subject_name : m.subjects?.subject_name;
+                const rowSubjectId = m.subject_id != null ? Number(m.subject_id) : null;
+                return (subjectId != null && rowSubjectId===Number(subjectId)) || m.subject_name===subject || relationSubjectName===subject;
+              }).filter(function(m){ return m.file_url; });
+
+              return (
+                <StudySubjectAccordion
+                  key={subject}
+                  subject={subject}
+                  fileCount={materialsForSubject.length}
+                  isOpen={expandedRepoSubject === subject}
+                  onToggle={toggleRepoSubject}
+                >
+                  <div className="manage-list" style={{marginTop:0}}>
+                    {materialsForSubject.length===0 && <div className="empty-state">No material uploaded for this subject yet.</div>}
+                    {materialsForSubject.map(function(m){
+                      return (
+                        <div key={m.id} className="manage-row study-material-row">
+                          <span className="manage-row-text">
+                            {currentStudyIsAdmin
+                              ? m.file_name
+                              : <a href={m.file_url} target="_blank" rel="noopener noreferrer">📄 {m.file_name}</a>
+                            }
+                          </span>
+                          {currentStudyIsAdmin && (
+                            <RemoveBtn label={'Delete '+m.file_name} onClick={function(){ handleDeleteMaterial(m); }} />
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </section>
-            <button type="button" className="btn btn-secondary" onClick={goLanding}>Logout / Back to Home</button>
+                </StudySubjectAccordion>
+              );
+            })}
+
+            <button type="button" className="btn btn-secondary" onClick={goLanding} style={{marginTop:8}}>Logout / Back to Home</button>
           </section>
         )}
 
@@ -3085,6 +3126,39 @@ function AdminAccordionSection({ id, title, subtitle, icon, activeTab, onToggle,
         <div className="admin-accordion-header-text">
           <h2 className="card-title" style={{ margin: 0 }}>{title}</h2>
           {subtitle && <p className="helper-text" style={{ margin: '4px 0 0' }}>{subtitle}</p>}
+        </div>
+        <svg
+          className="admin-accordion-chevron"
+          width="18" height="18" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+        >
+          <path d="M6 9l6 6 6-6"/>
+        </svg>
+      </button>
+      {isOpen && <div className="admin-accordion-body">{children}</div>}
+    </section>
+  );
+}
+
+function StudySubjectAccordion({ subject, isOpen, onToggle, fileCount, children }){
+  return (
+    <section className="card admin-accordion-item">
+      <button
+        type="button"
+        className="admin-accordion-header"
+        onClick={function(){ onToggle(subject); }}
+        aria-expanded={isOpen}
+      >
+        <span className="admin-accordion-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+        </span>
+        <div className="admin-accordion-header-text">
+          <h2 className="study-subject-title">{subject}</h2>
+          <p className="helper-text" style={{ margin: '4px 0 0' }}>{fileCount} {fileCount===1?'file':'files'}</p>
         </div>
         <svg
           className="admin-accordion-chevron"
