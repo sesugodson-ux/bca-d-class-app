@@ -110,6 +110,15 @@ function numericRollCompare(a, b){
   return safeA - safeB;
 }
 
+const DSC_SCHEDULE = {
+  '2-4': 'DSC Lab',
+  '2-5': 'DSC Lab',
+  '4-1': 'DSC Theory'
+};
+function getDscForSlot(dayOrder, hour){
+  return DSC_SCHEDULE[String(dayOrder)+'-'+String(hour)] || null;
+}
+
 function languageBadgeFor(student){
   if(!student) return null;
   const raw = student.partOne;
@@ -637,6 +646,16 @@ export default function App(){
       if(error){ console.error(error); showToast('Could not save timetable slot', true); return; }
       setTimetable(function(tt){ return { ...tt, [dayOrder+'-'+hour]: subjectName }; });
     }catch(e){ console.error(e); showToast('Could not save timetable slot', true); }
+  }
+
+  function getHourDisplayInfo(dayOrder, hour, recordedSubjectName){
+    const dsc = getDscForSlot(dayOrder, hour);
+    if(dsc) return { label: dsc, isDsc: true };
+    const recorded = (recordedSubjectName || '').trim();
+    if(recorded) return { label: recorded, isDsc: false };
+    const scheduled = (timetable[dayOrder+'-'+hour] || '').trim();
+    if(scheduled) return { label: scheduled, isDsc: false };
+    return { label: '—', isDsc: false };
   }
 
   /* ---------- attendance history (row-per-hour, grouped by date for display) ---------- */
@@ -1758,6 +1777,7 @@ export default function App(){
   function handleExportPdfForDate(entry) {
     const generatedOn = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
     const niceDate = formatNiceDate(entry.date);
+    const entryDayOrder = (entry.rows && entry.rows[0] && entry.rows[0].day_order) || currentDayOrder;
 
     const hoursMap = {};
     const hourSubjectMap = {};
@@ -1782,6 +1802,12 @@ export default function App(){
               + '<td><b>'+escapeHtml(student.name)+'</b></td>';
 
       recordedHours.forEach(function(rh){
+        const info = getHourDisplayInfo(entryDayOrder, rh.hour, hourSubjectMap[rh.hour]);
+        if (info.isDsc) {
+          tds += '<td style="text-align:center;color:#c2410c;font-weight:800;background:#ffedd5;">DSC</td>';
+          return;
+        }
+
         if (!rh.isRecorded) {
           tds += '<td style="text-align:center;color:#94a3b8;font-weight:600;">—</td>';
           return;
@@ -1833,13 +1859,14 @@ export default function App(){
       + '<div class="dept-name">Department of Computer Applications (BCA)</div>'
       + '<div class="report-title">Full Day Attendance Master Register</div>'
       + '</div>'
-      + '<div class="meta"><span>Class: <b>' + escapeHtml(entry.class_name || className) + '</b> · Date: <b>' + escapeHtml(niceDate) + '</b> · Day Order: <b>' + (entry.rows && entry.rows[0] ? entry.rows[0].day_order || '—' : currentDayOrder) + '</b></span><span>Generated: ' + escapeHtml(generatedOn) + '</span></div>'
+      + '<div class="meta"><span>Class: <b>' + escapeHtml(entry.class_name || className) + '</b> · Date: <b>' + escapeHtml(niceDate) + '</b> · Day Order: <b>' + escapeHtml(entryDayOrder) + '</b></span><span>Generated: ' + escapeHtml(generatedOn) + '</span></div>'
       + '<table><thead><tr>'
       + '<th>#</th><th>Roll Number</th><th>Student Name</th>'
       + HOURS.map(function(h){
-          const subjectName = hourSubjectMap[h] || '';
-          const displaySubject = subjectName ? ((/tamil/i.test(subjectName)) ? 'Tamil / OL' : subjectName) : '—';
-          return '<th style="font-size:11px;">H'+h+'<br><span style="font-size:9px;font-weight:normal;color:#64748b;">'+escapeHtml(displaySubject)+'</span></th>';
+          const info = getHourDisplayInfo(entryDayOrder, h, hourSubjectMap[h]);
+          const thStyle = info.isDsc ? 'background:#ffedd5;color:#c2410c;' : '';
+          const subStyle = info.isDsc ? 'font-size:9px;font-weight:800;color:#c2410c;' : 'font-size:9px;font-weight:normal;color:#64748b;';
+          return '<th style="font-size:11px;'+thStyle+'">H'+h+'<br><span style="'+subStyle+'">'+escapeHtml(info.label)+'</span></th>';
         }).join('')
       + '</tr></thead><tbody>'
       + rowsHtml
@@ -1855,15 +1882,18 @@ export default function App(){
   function handleExportAbsenteesPdfForDate(entry) {
     const generatedOn = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
     const niceDate = formatNiceDate(entry.date);
+    const entryDayOrder = (entry.rows && entry.rows[0] && entry.rows[0].day_order) || currentDayOrder;
 
     const hoursMap = {};
+    const hourSubjectMap = {};
     const recordedHourSet = new Set();
     entry.rows.forEach(function(row){
       recordedHourSet.add(Number(row.hour));
       hoursMap[row.hour] = row.absent_rolls || [];
+      hourSubjectMap[row.hour] = row.subject_name || '';
     });
 
-    const recordedHours = [1, 2, 3, 4, 5].map(function(h){
+    const recordedHours = HOURS.map(function(h){
       return { hour: h, isRecorded: recordedHourSet.has(h) };
     });
 
@@ -1886,10 +1916,13 @@ export default function App(){
                 + '<td><b>'+escapeHtml(student.name)+'</b></td>';
 
         recordedHours.forEach(function(rh){
-          if (!rh.isRecorded) {
+          const info = getHourDisplayInfo(entryDayOrder, rh.hour, hourSubjectMap[rh.hour]);
+          if (info.isDsc) {
+            tds += '<td style="text-align:center;color:#c2410c;font-weight:800;background:#ffedd5;">DSC</td>';
+          } else if (!rh.isRecorded) {
             tds += '<td style="text-align:center;color:#94a3b8;font-weight:600;">—</td>';
           } else {
-            const isTamilHour = /tamil/i.test((entry.rows.find(function(r){ return r.hour === rh.hour; }) || {}).subject_name || '');
+            const isTamilHour = /tamil/i.test(hourSubjectMap[rh.hour] || '');
             const isOtherLang = !!(student.partOne && student.partOne.trim().toLowerCase() !== 'tamil');
 
             if (isTamilHour && isOtherLang) {
@@ -1935,14 +1968,14 @@ export default function App(){
       + '<div class="dept-name">Department of Computer Applications (BCA)</div>'
       + '<div class="report-title">Full Day Absentees Report</div>'
       + '</div>'
-      + '<div class="meta"><span>Class: <b>' + escapeHtml(entry.class_name || className) + '</b> · Date: <b>' + escapeHtml(niceDate) + '</b> · Day Order: <b>' + (entry.rows && entry.rows[0] ? entry.rows[0].day_order || '—' : currentDayOrder) + '</b></span><span>Generated: ' + escapeHtml(generatedOn) + '</span></div>'
+      + '<div class="meta"><span>Class: <b>' + escapeHtml(entry.class_name || className) + '</b> · Date: <b>' + escapeHtml(niceDate) + '</b> · Day Order: <b>' + escapeHtml(entryDayOrder) + '</b></span><span>Generated: ' + escapeHtml(generatedOn) + '</span></div>'
       + '<table><thead><tr>'
       + '<th>#</th><th>Roll Number</th><th>Student Name</th>'
       + HOURS.map(function(h){
-          const hourRow = entry.rows.find(function(r){ return r.hour === h; });
-          const subjectName = hourRow ? hourRow.subject_name || '' : '';
-          const displaySubject = subjectName ? ((/tamil/i.test(subjectName)) ? 'Tamil / OL' : subjectName) : '—';
-          return '<th style="font-size:11px;">H'+h+'<br><span style="font-size:9px;font-weight:normal;color:#64748b;">'+escapeHtml(displaySubject)+'</span></th>';
+          const info = getHourDisplayInfo(entryDayOrder, h, hourSubjectMap[h]);
+          const thStyle = info.isDsc ? 'background:#ffedd5;color:#c2410c;' : '';
+          const subStyle = info.isDsc ? 'font-size:9px;font-weight:800;color:#c2410c;' : 'font-size:9px;font-weight:normal;color:#64748b;';
+          return '<th style="font-size:11px;'+thStyle+'">H'+h+'<br><span style="'+subStyle+'">'+escapeHtml(info.label)+'</span></th>';
         }).join('')
       + '</tr></thead><tbody>'
       + rowsHtml
