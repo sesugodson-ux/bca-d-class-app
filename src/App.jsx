@@ -190,15 +190,19 @@ function groupHistoryByDate(rows){
   const map = {};
   rows.forEach(function(row){
     if(!map[row.date]){
-      map[row.date] = { date: row.date, class_name: row.class_name, total_active: row.total_active, rows: [] };
+      map[row.date] = { date: row.date, class_name: row.class_name, total_active: row.total_active, day_order: row.day_order, rows: [] };
     }
     map[row.date].rows.push(row);
     if(row.total_active!=null) map[row.date].total_active = row.total_active;
     if(row.class_name) map[row.date].class_name = row.class_name;
+    if(row.day_order!=null) map[row.date].day_order = row.day_order;
   });
   return Object.keys(map)
     .map(function(d){ return map[d]; })
-    .sort(function(a,b){ return a.date < b.date ? 1 : -1; });
+    .sort(function(a,b){
+      if(a.date === b.date) return 0;
+      return a.date > b.date ? -1 : 1;
+    });
 }
 
 const STUDY_TABLE = 'study_materials';
@@ -2928,47 +2932,49 @@ export default function App(){
                 </svg>
               }
             >
-              <div>
-                <button type="button" className="link-btn" onClick={handleExportPdf}>Export PDF</button>
-              </div>
+              <div className="history-search-panel">
+                <div>
+                  <button type="button" className="link-btn" onClick={handleExportPdf}>Export PDF</button>
+                </div>
 
-              <div className="add-row">
-                <input type="text" inputMode="numeric" placeholder="Enter Roll Number…" autoComplete="off"
-                  className={shakeCls('historySearchRoll')} value={historySearchRoll} onChange={function(e){ setHistorySearchRoll(e.target.value); }} />
-                <button type="button" className="btn-add" onClick={handleExportStudentPdf}>Export Student PDF</button>
-              </div>
+                <div className="add-row">
+                  <input type="text" inputMode="numeric" placeholder="Enter Roll Number…" autoComplete="off"
+                    className={shakeCls('historySearchRoll')} value={historySearchRoll} onChange={function(e){ setHistorySearchRoll(e.target.value); }} />
+                  <button type="button" className="btn-add" onClick={handleExportStudentPdf}>Export Student PDF</button>
+                </div>
 
-              {historySearchRoll.trim() && (function(){
-                const rollQ = historySearchRoll.trim();
-                const student = studentDb.find(function(s){ return normalizeRollNo(s.rollNo)===normalizeRollNo(rollQ); });
-                if(!student){
-                  return <div className="empty-state">No student found with Roll Number "{rollQ}".</div>;
-                }
-                const rows = getStudentHistoryRows(student.rollNo);
-                const pct = getAttendancePercent(student.rollNo);
-                return (
-                  <div className="history-breakdown" style={{marginBottom:16,borderTop:'1px solid var(--border)',paddingTop:10}}>
-                    <div className="result-row">
-                      <span className="result-row-subject"><strong>{student.name}</strong> · {student.rollNo}</span>
-                      <span className="result-row-marks">{pct!=null ? pct+'% attendance' : 'No data yet'}</span>
+                {historySearchRoll.trim() && (function(){
+                  const rollQ = historySearchRoll.trim();
+                  const student = studentDb.find(function(s){ return normalizeRollNo(s.rollNo)===normalizeRollNo(rollQ); });
+                  if(!student){
+                    return <div className="empty-state">No student found with Roll Number "{rollQ}".</div>;
+                  }
+                  const rows = getStudentHistoryRows(student.rollNo);
+                  const pct = getAttendancePercent(student.rollNo);
+                  return (
+                    <div className="history-breakdown" style={{marginTop:12,borderTop:'1px solid var(--border)',paddingTop:10}}>
+                      <div className="result-row">
+                        <span className="result-row-subject"><strong>{student.name}</strong> · {student.rollNo}</span>
+                        <span className="result-row-marks">{pct!=null ? pct+'% attendance' : 'No data yet'}</span>
+                      </div>
+                      {rows.length===0 && <div className="empty-state">No absences recorded for this student.</div>}
+                      {rows.map(function(r){
+                        return (
+                          <div key={r.date} className="result-row">
+                            <span className="result-row-subject">{formatNiceDate(r.date)}</span>
+                            <span className={"result-row-marks"+(r.isFullDay?' low':'')}>
+                              {r.isFullDay ? 'Full Day Absent' : 'Absent — Hour '+r.hoursAbsent.join(', ')}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    {rows.length===0 && <div className="empty-state">No absences recorded for this student.</div>}
-                    {rows.map(function(r){
-                      return (
-                        <div key={r.date} className="result-row">
-                          <span className="result-row-subject">{formatNiceDate(r.date)}</span>
-                          <span className={"result-row-marks"+(r.isFullDay?' low':'')}>
-                            {r.isFullDay ? 'Full Day Absent' : 'Absent — Hour '+r.hoursAbsent.join(', ')}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
+                  );
+                })()}
+              </div>
 
-              <p className="helper-text" style={{marginTop:0}}>Each entry below groups every hour saved for that date. Tap a date to see the hour-by-hour absentee breakdown.</p>
-              <div className="manage-list">
+              <p className="helper-text" style={{marginTop:14}}>Each card below groups every hour saved for that date, newest first. Tap a card to see the hour-by-hour absentee breakdown.</p>
+              <div className="history-grid">
                 {groupedHistory.length===0 && <div className="empty-state">No saved reports yet — send an Attendance Report via WhatsApp to create one.</div>}
                 {groupedHistory.map(function(dateEntry){
                   const isOpen = expandedHistoryDate === dateEntry.date;
@@ -2978,13 +2984,18 @@ export default function App(){
                   dateEntry.rows.forEach(function(row){ (row.absent_rolls||[]).forEach(function(r){ allRolls.add(r); }); });
                   const absentCount = allRolls.size;
                   const presentCount = dateEntry.total_active!=null ? Math.max(dateEntry.total_active-absentCount,0) : null;
+                  const dayOrder = dateEntry.day_order!=null ? dateEntry.day_order : (dateEntry.rows[0] && dateEntry.rows[0].day_order);
 
                   return (
-                    <div key={dateEntry.date} className="history-row">
+                    <div key={dateEntry.date} className={"history-row"+(isOpen?' is-open':'')}>
                       <div className="history-row-top" style={{cursor:'pointer'}} onClick={function(){ toggleHistoryExpand(dateEntry.date); }}>
                         <div>
                           <div className="history-row-title">{formatNiceDate(dateEntry.date)}</div>
-                          <div className="history-row-meta">{dateEntry.class_name||'—'} · {hoursWithAbsentees} of {dateEntry.rows.length} hour(s) with absentees</div>
+                          <div className="history-row-meta">
+                            {dateEntry.class_name||'—'}
+                            {dayOrder!=null && <span className="day-order-badge">Day Order: {dayOrder}</span>}
+                          </div>
+                          <div className="history-row-meta">{hoursWithAbsentees} of {dateEntry.rows.length} hour(s) with absentees</div>
                         </div>
                         <span className="link-btn">{isOpen ? 'Hide' : 'View breakdown'}</span>
                       </div>
