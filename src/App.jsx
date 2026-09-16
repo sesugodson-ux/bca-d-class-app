@@ -347,6 +347,7 @@ export default function App(){
 
   /* ---------- toast ---------- */
   const [toast, setToast] = useState({ show:false, msg:'', error:false });
+  const [aboutOpen, setAboutOpen] = useState(false);
   const toastTimer = useRef(null);
   function showToast(msg, isError){
     setToast({ show:true, msg, error: !!isError });
@@ -656,6 +657,26 @@ export default function App(){
     const scheduled = (timetable[dayOrder+'-'+hour] || '').trim();
     if(scheduled) return { label: scheduled, isDsc: false };
     return { label: '—', isDsc: false };
+  }
+
+  /* Per-date, per-hour breakdown for one student, using the same DSC and
+     timetable fallback logic as the master report. */
+  function getStudentDatewiseHourBreakdown(rollNo){
+    const rollQ = normalizeRollNo(rollNo);
+    if(!rollQ) return [];
+    const grouped = groupHistoryByDate(history);
+    return grouped.map(function(dateEntry){
+      const dayOrder = (dateEntry.rows[0] && dateEntry.rows[0].day_order) || currentDayOrder;
+      const hourCells = HOURS.map(function(h){
+        const row = dateEntry.rows.find(function(r){ return r.hour === h; });
+        const info = getHourDisplayInfo(dayOrder, h, row ? row.subject_name : '');
+        if(info.isDsc) return { hour: h, status: 'dsc' };
+        if(!row) return { hour: h, status: 'blank' };
+        const isAbsent = (row.absent_rolls||[]).some(function(r){ return normalizeRollNo(r)===rollQ; });
+        return { hour: h, status: isAbsent ? 'absent' : 'present' };
+      });
+      return { date: dateEntry.date, dayOrder: dayOrder, hourCells: hourCells };
+    });
   }
 
   /* ---------- attendance history (row-per-hour, grouped by date for display) ---------- */
@@ -1594,33 +1615,30 @@ export default function App(){
     }
   }
 
-  /* Generates a printable, individual attendance PDF for a single student:
-     College/Department header, full student details, and a clean table of
-     every date + exact hours they were absent in, driven directly by the
-     flat row-per-hour history data via getStudentHistoryRows(). */
+    /* Generates a printable, individual attendance PDF for a single student. */
   function exportStudentAttendancePdf(rollNoInput){
     const safeRoll = String(rollNoInput==null?'':rollNoInput).trim();
     if(!safeRoll){ showToast('No Roll Number available to export', true); return; }
     const student = studentDb.find(function(s){ return normalizeRollNo(s.rollNo)===normalizeRollNo(safeRoll); });
     if(!student){ showToast('No student found with that Roll Number', true); return; }
 
-    const rows = getStudentHistoryRows(student.rollNo);
+    const breakdown = getStudentDatewiseHourBreakdown(student.rollNo);
     const pct = getAttendancePercent(student.rollNo);
 
-    const rowsHtml = rows.length===0
-      ? '<tr><td colspan="3" style="text-align:center;color:#666;padding:12px;">No absences recorded — full attendance in all saved reports.</td></tr>'
-      : rows.map(function(r){
-          const pillCls = r.isFullDay ? 'pill-absent' : 'pill-partial';
-          const label = r.isFullDay ? 'Full Day Absent' : 'Absent — Hour '+r.hoursAbsent.join(', ');
-          const dayOrderRow = history.find(function(h){ return h.date === r.date && h.day_order != null; });
-          const dayOrderVal = dayOrderRow ? dayOrderRow.day_order : '—';
-          return (
-            '<tr>'
-            + '<td>'+escapeHtml(formatNiceDate(r.date))+'</td>'
-            + '<td class="num">'+escapeHtml(dayOrderVal)+'</td>'
-            + '<td><span class="pill '+pillCls+'">'+escapeHtml(label)+'</span></td>'
-            + '</tr>'
-          );
+    function cellHtml(cell){
+      if(cell.status==='dsc') return '<td style="text-align:center;color:#c2410c;font-weight:800;">DSC</td>';
+      if(cell.status==='blank') return '<td style="text-align:center;color:#94a3b8;font-weight:600;">—</td>';
+      if(cell.status==='absent') return '<td style="text-align:center;color:#dc2626;font-weight:800;">A</td>';
+      return '<td style="text-align:center;color:#16a34a;font-weight:800;">P</td>';
+    }
+
+    const rowsHtml = breakdown.length===0
+      ? '<tr><td colspan="7" style="text-align:center;color:#666;padding:12px;">No attendance recorded yet.</td></tr>'
+      : breakdown.map(function(entry){
+          let tds = '<td>'+escapeHtml(formatNiceDate(entry.date))+'</td>'
+                  + '<td class="num">'+escapeHtml(entry.dayOrder)+'</td>';
+          entry.hourCells.forEach(function(c){ tds += cellHtml(c); });
+          return '<tr>'+tds+'</tr>';
         }).join('');
 
     const generatedOn = new Date().toLocaleString('en-IN',{ dateStyle:'medium', timeStyle:'short' });
@@ -1640,10 +1658,6 @@ export default function App(){
       + 'th{background:#f8fafc;color:#334155;font-weight:700;}'
       + 'td.num{text-align:center;}'
       + '.student-info td.label{background:#f1f5f9;font-weight:600;width:35%;color:#334155;}'
-      + '.pill{display:inline-block;padding:2px 8px;border-radius:12px;font-weight:700;font-size:10.5px;}'
-      + '.pill-present{background:#dcfce7;color:#15803d;}'
-      + '.pill-absent{background:#fee2e2;color:#b91c1c;}'
-      + '.pill-partial{background:#fef9c3;color:#a16207;}'
       + 'tbody tr:nth-child(even){background:#fafafa;}'
       + '.footer{position:fixed;bottom:8mm;left:0;right:0;text-align:center;font-size:7.5px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:4px;}'
       + '@media print{body{margin:10mm;}}';
@@ -1665,8 +1679,8 @@ export default function App(){
       + '<tr><td class="label">Part One Language</td><td>'+escapeHtml(student.partOne||'—')+'</td></tr>'
       + '<tr><td class="label">Overall Attendance %</td><td><b>'+(pct!=null ? escapeHtml(pct)+'%' : '—')+'</b></td></tr>'
       + '</tbody></table>'
-      + '<h2>Absence Record</h2>'
-      + '<table><thead><tr><th>Date</th><th>Day Order</th><th>Status</th></tr></thead>'
+      + '<h2>Hour-wise Attendance Record</h2>'
+      + '<table><thead><tr><th>Date</th><th>Day Order</th><th>H1</th><th>H2</th><th>H3</th><th>H4</th><th>H5</th></tr></thead>'
       + '<tbody>'+rowsHtml+'</tbody></table>'
       + '<div class="footer">BCA Class Portal Record · Student-managed internal utility report. May contain minor discrepancies compared to official college portals.</div>'
       + '</body></html>';
@@ -1804,7 +1818,7 @@ export default function App(){
       recordedHours.forEach(function(rh){
         const info = getHourDisplayInfo(entryDayOrder, rh.hour, hourSubjectMap[rh.hour]);
         if (info.isDsc) {
-          tds += '<td style="text-align:center;color:#c2410c;font-weight:800;background:#ffedd5;">DSC</td>';
+          tds += '<td style="text-align:center;color:#c2410c;font-weight:800;">DSC</td>';
           return;
         }
 
@@ -1864,7 +1878,7 @@ export default function App(){
       + '<th>#</th><th>Roll Number</th><th>Student Name</th>'
       + HOURS.map(function(h){
           const info = getHourDisplayInfo(entryDayOrder, h, hourSubjectMap[h]);
-          const thStyle = info.isDsc ? 'background:#ffedd5;color:#c2410c;' : '';
+          const thStyle = info.isDsc ? 'color:#c2410c;' : '';
           const subStyle = info.isDsc ? 'font-size:9px;font-weight:800;color:#c2410c;' : 'font-size:9px;font-weight:normal;color:#64748b;';
           return '<th style="font-size:11px;'+thStyle+'">H'+h+'<br><span style="'+subStyle+'">'+escapeHtml(info.label)+'</span></th>';
         }).join('')
@@ -1918,7 +1932,7 @@ export default function App(){
         recordedHours.forEach(function(rh){
           const info = getHourDisplayInfo(entryDayOrder, rh.hour, hourSubjectMap[rh.hour]);
           if (info.isDsc) {
-            tds += '<td style="text-align:center;color:#c2410c;font-weight:800;background:#ffedd5;">DSC</td>';
+            tds += '<td style="text-align:center;color:#c2410c;font-weight:800;">DSC</td>';
           } else if (!rh.isRecorded) {
             tds += '<td style="text-align:center;color:#94a3b8;font-weight:600;">—</td>';
           } else {
@@ -1973,7 +1987,7 @@ export default function App(){
       + '<th>#</th><th>Roll Number</th><th>Student Name</th>'
       + HOURS.map(function(h){
           const info = getHourDisplayInfo(entryDayOrder, h, hourSubjectMap[h]);
-          const thStyle = info.isDsc ? 'background:#ffedd5;color:#c2410c;' : '';
+          const thStyle = info.isDsc ? 'color:#c2410c;' : '';
           const subStyle = info.isDsc ? 'font-size:9px;font-weight:800;color:#c2410c;' : 'font-size:9px;font-weight:normal;color:#64748b;';
           return '<th style="font-size:11px;'+thStyle+'">H'+h+'<br><span style="'+subStyle+'">'+escapeHtml(info.label)+'</span></th>';
         }).join('')
@@ -2047,6 +2061,9 @@ export default function App(){
             <h1>BCA App</h1>
           </div>
           <div className="status-pill"><span className="status-dot"></span><span>{className}</span></div>
+          <button type="button" className="header-back" aria-label="About" onClick={function(){ setAboutOpen(true); }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          </button>
         </div>
       </header>
 
@@ -3102,6 +3119,20 @@ export default function App(){
             <button type="button" className="modal-cancel-btn" onClick={closeEditModal}>Cancel</button>
             <button type="button" className="modal-save-btn" onClick={saveEditModal}>Save Changes</button>
           </div>
+        </div>
+      </div>
+
+      <div className={"modal-overlay"+(aboutOpen?' open':'')} role="dialog" aria-modal="true" onClick={function(e){ if(e.target===e.currentTarget) setAboutOpen(false); }}>
+        <div className="modal-sheet" style={{maxWidth:420, textAlign:'center', padding:'32px 24px'}}>
+          <div className="modal-header" style={{justifyContent:'center', position:'relative'}}>
+            <h2 className="modal-title">About</h2>
+            <button type="button" className="modal-close" aria-label="Close" onClick={function(){ setAboutOpen(false); }} style={{position:'absolute', right:0}}>&#x2715;</button>
+          </div>
+          <div style={{width:56,height:56,margin:'8px auto 18px',borderRadius:16,background:'linear-gradient(135deg,var(--accent),var(--accent-dark))',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 14px rgba(0,168,132,.35)'}}>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M9 11l2.5 2.5L16 8.5" stroke="#04201b" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/><rect x="3.5" y="3.5" width="17" height="17" rx="5" stroke="#04201b" strokeWidth="2.2"/></svg>
+          </div>
+          <p style={{fontSize:15,fontWeight:700,color:'var(--text)',margin:'0 0 6px'}}>BCA App</p>
+          <p style={{fontSize:13.5,color:'var(--text-dim)',margin:0,lineHeight:1.6}}>Managed by Class Representative - GODSON S</p>
         </div>
       </div>
 
