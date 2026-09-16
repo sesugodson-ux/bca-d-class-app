@@ -110,13 +110,13 @@ function numericRollCompare(a, b){
   return safeA - safeB;
 }
 
-const DSC_SCHEDULE = {
-  '2-4': 'DSC Lab',
-  '2-5': 'DSC Lab',
-  '4-1': 'DSC Theory'
+const DSE_SCHEDULE = {
+  '2-4': 'DSE Lab',
+  '2-5': 'DSE Lab',
+  '4-1': 'DSE Theory'
 };
-function getDscForSlot(dayOrder, hour){
-  return DSC_SCHEDULE[String(dayOrder)+'-'+String(hour)] || null;
+function getDseForSlot(dayOrder, hour){
+  return DSE_SCHEDULE[String(dayOrder)+'-'+String(hour)] || null;
 }
 
 function languageBadgeFor(student){
@@ -654,32 +654,35 @@ export default function App(){
   }
 
   function getHourDisplayInfo(dayOrder, hour, recordedSubjectName){
-    const dsc = getDscForSlot(dayOrder, hour);
-    if(dsc) return { label: dsc, isDsc: true };
+    const dse = getDseForSlot(dayOrder, hour);
+    if(dse) return { label: dse, isDse: true };
     const recorded = (recordedSubjectName || '').trim();
-    if(recorded) return { label: recorded, isDsc: false };
+    if(recorded) return { label: recorded, isDse: false };
     const scheduled = (timetable[dayOrder+'-'+hour] || '').trim();
-    if(scheduled) return { label: scheduled, isDsc: false };
-    return { label: '—', isDsc: false };
+    if(scheduled) return { label: scheduled, isDse: false };
+    return { label: '—', isDse: false };
   }
 
-  /* Per-date, per-hour breakdown for one student, using the same DSC and
+  /* Per-date, per-hour breakdown for one student, using the same DSE and
      timetable fallback logic as the master report. */
   function getStudentDatewiseHourBreakdown(rollNo){
     const rollQ = normalizeRollNo(rollNo);
     if(!rollQ) return [];
     const grouped = groupHistoryByDate(history);
-    return grouped.map(function(dateEntry){
+    const withCells = grouped.map(function(dateEntry){
       const dayOrder = (dateEntry.rows[0] && dateEntry.rows[0].day_order) || currentDayOrder;
       const hourCells = HOURS.map(function(h){
         const row = dateEntry.rows.find(function(r){ return r.hour === h; });
         const info = getHourDisplayInfo(dayOrder, h, row ? row.subject_name : '');
-        if(info.isDsc) return { hour: h, status: 'dsc' };
+        if(info.isDse) return { hour: h, status: 'dse' };
         if(!row) return { hour: h, status: 'blank' };
         const isAbsent = (row.absent_rolls||[]).some(function(r){ return normalizeRollNo(r)===rollQ; });
         return { hour: h, status: isAbsent ? 'absent' : 'present' };
       });
       return { date: dateEntry.date, dayOrder: dayOrder, hourCells: hourCells };
+    });
+    return withCells.filter(function(entry){
+      return entry.hourCells.some(function(c){ return c.status === 'absent'; });
     });
   }
 
@@ -1630,7 +1633,7 @@ export default function App(){
     const pct = getAttendancePercent(student.rollNo);
 
     function cellHtml(cell){
-      if(cell.status==='dsc') return '<td style="text-align:center;color:#c2410c;font-weight:800;">DSC</td>';
+      if(cell.status==='dse') return '<td style="text-align:center;color:#c2410c;font-weight:800;">DSE</td>';
       if(cell.status==='blank') return '<td style="text-align:center;color:#94a3b8;font-weight:600;">—</td>';
       if(cell.status==='absent') return '<td style="text-align:center;color:#dc2626;font-weight:800;">A</td>';
       return '<td style="text-align:center;color:#16a34a;font-weight:800;">P</td>';
@@ -1821,8 +1824,8 @@ export default function App(){
 
       recordedHours.forEach(function(rh){
         const info = getHourDisplayInfo(entryDayOrder, rh.hour, hourSubjectMap[rh.hour]);
-        if (info.isDsc) {
-          tds += '<td style="text-align:center;color:#c2410c;font-weight:800;">DSC</td>';
+        if (info.isDse) {
+          tds += '<td style="text-align:center;color:#c2410c;font-weight:800;">DSE</td>';
           return;
         }
 
@@ -1882,8 +1885,8 @@ export default function App(){
       + '<th>#</th><th>Roll Number</th><th>Student Name</th>'
       + HOURS.map(function(h){
           const info = getHourDisplayInfo(entryDayOrder, h, hourSubjectMap[h]);
-          const thStyle = info.isDsc ? 'color:#c2410c;' : '';
-          const subStyle = info.isDsc ? 'font-size:9px;font-weight:800;color:#c2410c;' : 'font-size:9px;font-weight:normal;color:#64748b;';
+          const thStyle = info.isDse ? 'color:#c2410c;' : '';
+          const subStyle = info.isDse ? 'font-size:9px;font-weight:800;color:#c2410c;' : 'font-size:9px;font-weight:normal;color:#64748b;';
           return '<th style="font-size:11px;'+thStyle+'">H'+h+'<br><span style="'+subStyle+'">'+escapeHtml(info.label)+'</span></th>';
         }).join('')
       + '</tr></thead><tbody>'
@@ -1935,8 +1938,8 @@ export default function App(){
 
         recordedHours.forEach(function(rh){
           const info = getHourDisplayInfo(entryDayOrder, rh.hour, hourSubjectMap[rh.hour]);
-          if (info.isDsc) {
-            tds += '<td style="text-align:center;color:#c2410c;font-weight:800;">DSC</td>';
+          if (info.isDse) {
+            tds += '<td style="text-align:center;color:#c2410c;font-weight:800;">DSE</td>';
           } else if (!rh.isRecorded) {
             tds += '<td style="text-align:center;color:#94a3b8;font-weight:600;">—</td>';
           } else {
@@ -1991,8 +1994,8 @@ export default function App(){
       + '<th>#</th><th>Roll Number</th><th>Student Name</th>'
       + HOURS.map(function(h){
           const info = getHourDisplayInfo(entryDayOrder, h, hourSubjectMap[h]);
-          const thStyle = info.isDsc ? 'color:#c2410c;' : '';
-          const subStyle = info.isDsc ? 'font-size:9px;font-weight:800;color:#c2410c;' : 'font-size:9px;font-weight:normal;color:#64748b;';
+          const thStyle = info.isDse ? 'color:#c2410c;' : '';
+          const subStyle = info.isDse ? 'font-size:9px;font-weight:800;color:#c2410c;' : 'font-size:9px;font-weight:normal;color:#64748b;';
           return '<th style="font-size:11px;'+thStyle+'">H'+h+'<br><span style="'+subStyle+'">'+escapeHtml(info.label)+'</span></th>';
         }).join('')
       + '</tr></thead><tbody>'
