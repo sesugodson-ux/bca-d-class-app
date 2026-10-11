@@ -1262,8 +1262,13 @@ export default function App(){
     exportStudentAttendancePdf(safeRoll);
   }
 
-  /* Deletes every hour-row saved for a given date. */
+  /* Deletes every hour-row saved for a given date (after confirmation). */
   async function handleDeleteHistoryEntry(date){
+    const confirmed = window.confirm(
+      'Are you sure you want to delete the full attendance report for ' + formatNiceDate(date) + '? This removes all saved hours for that day and cannot be undone.'
+    );
+    if(!confirmed) return;
+
     try{
       const { error } = await supabase.from('attendance_history').delete().eq('date', date);
       if(error){ showToast('Could not delete report', true); return; }
@@ -1271,8 +1276,13 @@ export default function App(){
     }catch(e){ showToast('Could not delete report', true); }
   }
 
-  /* Deletes only one hour-row for a given date. */
+  /* Deletes only one hour-row for a given date (after confirmation). */
   async function handleDeleteHistoryHourEntry(dateStr, hour){
+    const confirmed = window.confirm(
+      'Are you sure you want to delete the Hour ' + hour + ' record for ' + formatNiceDate(dateStr) + '? This cannot be undone.'
+    );
+    if(!confirmed) return;
+
     try{
       const { error } = await supabase
         .from('attendance_history')
