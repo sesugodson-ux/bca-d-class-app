@@ -24,3 +24,4 @@ export function compressImageToBase64(file, maxSide = 1600, quality = 0.85){
     img.src = url;
   });
 }
+
