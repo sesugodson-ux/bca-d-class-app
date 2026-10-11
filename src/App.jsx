@@ -580,6 +580,9 @@ export default function App(){
     fetchSubjects(); fetchAdmins(); fetchTimetable(); fetchCurrentDayOrder(); fetchStudents(); fetchStudentPermissions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(function(){
+    if(currentUser){ fetchHistory(); }
+  }, [currentUser, fetchHistory]);
   useEffect(function(){ fetchLeftStudents(); }, [fetchLeftStudents]);
   useEffect(function(){
     (async function(){
