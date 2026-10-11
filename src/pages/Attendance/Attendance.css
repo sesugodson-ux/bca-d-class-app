@@ -58,3 +58,26 @@
 .bubble pre strong{color:#fff;font-weight:700;}
 .bubble-meta{display:flex;justify-content:flex-end;align-items:center;gap:4px;margin-top:4px;font-size:10.5px;color:rgba(255,255,255,.62);}
 .bubble-meta svg{width:15px;height:10px;}
+
+/* ===== SCAN ATTENDANCE NOTE ===== */
+.scan-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.scan-actions .btn{flex:1 1 150px;min-height:46px;}
+.scan-review{margin-top:14px;border-top:1px solid var(--panel-border);padding-top:12px;}
+.scan-summary{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
+.scan-pill{
+  font-size:11.5px;font-weight:700;color:var(--accent);
+  background:rgba(0,168,132,.12);border:1px solid rgba(0,168,132,.3);
+  border-radius:999px;padding:3px 10px;
+}
+.scan-hour-row{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+.scan-hour-chip{
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:8px 4px;border-radius:var(--radius-sm);cursor:pointer;
+  background:rgba(255,255,255,.04);border:1px solid var(--panel-border);color:var(--text);
+  transition:background .15s var(--ease),border-color .15s var(--ease);
+}
+.scan-hour-chip:hover:not(:disabled){background:rgba(255,255,255,.09);}
+.scan-hour-chip.active{border-color:var(--accent);background:rgba(0,168,132,.12);}
+.scan-hour-chip.blank{opacity:.45;cursor:not-allowed;}
+.scan-hour-label{font-size:13px;font-weight:800;}
+.scan-hour-count{font-size:10.5px;color:var(--text-dim);}

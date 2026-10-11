@@ -12,6 +12,8 @@ import {
   storagePathFromUrl, numericRollCompare, getDseForSlot, normalizeRollNo,
   credentialsMatch, groupHistoryByDate
 } from './utils/helpers';
+import { compressImageToBase64 } from './utils/imageUtils';
+import { resolveScannedRolls } from './utils/scanHelpers';
 import {
   openPrintWindow, buildHistoryPdfHtml, buildStudentAttendancePdfHtml,
   buildHourPdfHtml, buildMasterPdfHtml, buildAbsenteesPdfHtml
@@ -611,6 +613,7 @@ export default function App(){
     setCurrentAdminRollNo('');
     setCurrentStudyRollNo('');
     setCurrentStudyIsAdmin(false);
+    setScanData(null); setScanDayOrder(null);
     setSemesterResults([]); setSemesterList([]); setSelectedSemester(null);
     setView('landing');
     window.scrollTo(0,0);
@@ -684,6 +687,74 @@ export default function App(){
   }
   function resetGrid(){ setRollState({}); }
 
+  /* ================= SCAN ATTENDANCE NOTE ================= */
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanData, setScanData] = useState(null);       // { date, dayOrder, hours: { 1: { ids, unresolved, leftSkipped, isBlank }, ... } }
+  const [scanDayOrder, setScanDayOrder] = useState(null); // day order read from the note (overrides today's on save)
+
+  /* Loads one scanned hour into the grid and picks its timetable subject.
+     `data` is passed explicitly right after scanning, because scanData state
+     has not updated yet at that point. */
+  function applyScannedHour(hour, data){
+    const source = data || scanData;
+    if(!source) return;
+    const info = source.hours[hour];
+    if(!info) return;
+
+    const nextState = {};
+    info.ids.forEach(function(id){ nextState[id] = 'absent'; });
+    setRollState(nextState);
+    setHourVal(String(hour));
+
+    const dOrder = source.dayOrder || currentDayOrder;
+    const scheduled = (timetable[dOrder+'-'+hour] || '').trim();
+    setSubjectVal(subjects.indexOf(scheduled) !== -1 ? scheduled : '');
+  }
+
+  async function handleScanImage(file){
+    if(!file) return;
+    if(!/^image\//.test(file.type)){ showToast('Please choose an image file', true); return; }
+
+    setScanBusy(true);
+    try{
+      const { base64, mimeType } = await compressImageToBase64(file);
+      const { data, error } = await supabase.functions.invoke('scan-attendance', {
+        body: { imageBase64: base64, mimeType: mimeType }
+      });
+      if(error || !data || data.error){
+        console.error(error || (data && data.error));
+        showToast('Could not read the note — try a clearer, well-lit photo', true);
+        return;
+      }
+
+      const hoursMap = {};
+      (data.hours || []).forEach(function(h){
+        const resolved = resolveScannedRolls(h.absentees, studentDb, leftIds);
+        hoursMap[h.hour] = { ...resolved, isBlank: !!h.isBlank };
+      });
+      const parsed = { date: data.date || null, dayOrder: data.dayOrder || null, hours: hoursMap };
+
+      if(parsed.date) setDateVal(parsed.date);
+      setScanDayOrder(parsed.dayOrder);
+      setScanData(parsed);
+
+      const firstHour = HOURS.find(function(h){ return hoursMap[h] && !hoursMap[h].isBlank; });
+      if(firstHour){
+        applyScannedHour(firstHour, parsed);
+        showToast('Note scanned — review Hour '+firstHour+' and save');
+      } else {
+        showToast('No absentee rows found on the note', true);
+      }
+    }catch(e){
+      console.error(e);
+      showToast('Could not read the note — try a clearer, well-lit photo', true);
+    }finally{
+      setScanBusy(false);
+    }
+  }
+
+  function clearScan(){ setScanData(null); setScanDayOrder(null); }
+
   const activeStudents = useMemo(function(){
     return studentDb.filter(function(s){ return s.name!=='XX' && leftIds.indexOf(s.id)===-1; });
   }, [studentDb, leftIds]);
@@ -745,7 +816,7 @@ export default function App(){
     const record = {
       date: dateVal,
       hour: hour,
-      day_order: currentDayOrder,
+      day_order: scanDayOrder || currentDayOrder,
       subject_name: subjectVal,
       class_name: className,
       absent_rolls: absentRolls,
@@ -1456,6 +1527,12 @@ export default function App(){
             sendBusy={sendBusy}
             handleSend={handleSend}
             handleCopy={handleCopy}
+            scanBusy={scanBusy}
+            scanData={scanData}
+            scanDayOrder={scanDayOrder}
+            handleScanImage={handleScanImage}
+            applyScannedHour={applyScannedHour}
+            clearScan={clearScan}
           />
         )}
 

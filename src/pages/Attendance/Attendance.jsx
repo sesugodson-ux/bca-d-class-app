@@ -3,6 +3,7 @@ import React from 'react';
 import StatBox from '../../components/common/StatBox';
 import { HOURS } from '../../utils/constants';
 import { languageBadgeFor } from '../../utils/helpers';
+import ScanAttendanceCard from './ScanAttendanceCard';
 import './Attendance.css';
 
 export default function Attendance({
@@ -20,10 +21,21 @@ export default function Attendance({
   buildRawMessage,
   sendBusy,
   handleSend,
-  handleCopy
+  handleCopy,
+  scanBusy, scanData, scanDayOrder,
+  handleScanImage, applyScannedHour, clearScan
 }){
   return (
     <section className="view active">
+      <ScanAttendanceCard
+        scanBusy={scanBusy}
+        scanData={scanData}
+        scanDayOrder={scanDayOrder}
+        hourVal={hourVal}
+        onFileSelected={handleScanImage}
+        onSelectHour={function(h){ applyScannedHour(h); }}
+        onClear={clearScan}
+      />
       <section className="card">
         <h2 className="card-title">Configuration</h2>
         <div className="form-row">
