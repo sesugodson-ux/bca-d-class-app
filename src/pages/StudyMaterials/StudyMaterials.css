@@ -1,0 +1,18 @@
+/* File: src/pages/StudyMaterials/StudyMaterials.css */
+
+/* ===== STUDY MATERIAL (subject groups + material rows) ===== */
+.study-subject-group{margin-bottom:16px;}
+.study-subject-heading{
+  display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--text);
+  margin:0 0 8px;padding-left:2px;
+}
+.study-subject-heading .study-count-pill{
+  font-size:10.5px;font-weight:700;color:var(--text-dim);
+  background:rgba(255,255,255,.06);border:1px solid var(--panel-border);
+  border-radius:999px;padding:2px 8px;
+}
+.study-material-row a{color:var(--tick);text-decoration:none;font-weight:600;}
+.study-material-row a:hover{text-decoration:underline;}
+
+/* .study-subject-title belongs to StudySubjectAccordion, so it lives in
+   src/components/common/Common.css. */

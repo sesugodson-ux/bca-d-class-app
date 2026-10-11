@@ -1,0 +1,86 @@
+/* File: src/components/Timetable/Timetable.css */
+
+/* ===== TIMETABLE WIDGET ===== */
+.timetable-card{margin-bottom:18px;}
+.timetable-section {
+  background: transparent !important;
+  border: none !important;
+  padding: 0;
+}
+.timetable-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+.timetable-top h3 {
+  margin: 0;
+  color: #a0aec0;
+  font-size: 0.95rem;
+  font-weight: bold;
+}
+.timetable-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+.hour-box {
+  border: 1px solid #2d3748;
+  padding: 10px 5px;
+  border-radius: 8px;
+  text-align: center;
+  background: rgba(255,255,255,.02);
+}
+.hour-label {
+  font-size: 0.7rem;
+  color: #a0aec0;
+  margin-bottom: 5px;
+}
+.hour-content {
+  color: #e2e8f0;
+}
+.day-badge {
+  background: #00875a;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+}
+.timetable-dayorder-select{
+  background:rgba(255,255,255,.035);border:1px solid var(--panel-border);
+  border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;
+  padding:8px 10px;cursor:pointer;
+}
+.timetable-admin-grid{display:flex;flex-direction:column;gap:10px;margin-top:12px;}
+.timetable-admin-day{
+  background:rgba(255,255,255,.03);border:1px solid var(--panel-border);
+  border-radius:var(--radius-sm);padding:10px;
+}
+.timetable-admin-day-title{font-size:12.5px;font-weight:700;color:var(--text-dim);margin-bottom:8px;}
+.timetable-admin-hour-row{display:grid;grid-template-columns:56px 1fr;gap:8px;align-items:center;margin-bottom:6px;}
+.timetable-admin-hour-row label{font-size:11.5px;color:var(--text-dim);}
+.timetable-admin-hour-row input{
+  background:rgba(255,255,255,.04);border:1px solid var(--panel-border);
+  border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;
+  padding:7px 9px;min-height:36px;
+}
+.timetable-admin-hour-row select{
+  background:rgba(255,255,255,.035);border:1px solid var(--panel-border);
+  border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;
+  padding:7px 9px;min-height:36px;
+  appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238696a0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 8px center;background-size:16px;
+  padding-right:28px;cursor:pointer;
+  transition:border-color .18s var(--ease),background .18s var(--ease),box-shadow .18s var(--ease);
+}
+.timetable-admin-hour-row select:focus{
+  outline:none;border-color:var(--accent);background-color:rgba(0,168,132,.06);
+  box-shadow:0 0 0 3px rgba(0,168,132,.16);
+}
+.timetable-admin-hour-row select option{background:var(--panel);color:var(--text);}
+@media (max-width: 640px){
+  .timetable-dark{min-width:480px;font-size:.82rem;}
+  .timetable-dark th,
+  .timetable-dark td{padding:8px 6px;}
+}

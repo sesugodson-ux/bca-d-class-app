@@ -1,307 +1,31 @@
+// File: src/App.jsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { supabase } from './supabaseClient';
-import './App.css';
+import { supabase } from './services/supabaseClient';
+import './global.css';
 
-const XX_IDS = ["23","71"];
+import {
+  XX_IDS, LS_CLASS, LS_USER, DEFAULT_CLASS, DEFAULT_SUBJECTS, APP_MODULES,
+  DEFAULT_STUDENT_PERMISSIONS, HOURS, STUDY_TABLE, STUDY_BUCKET
+} from './utils/constants';
+import {
+  safeParse, todayISO, formatNiceDate, isValidDobFormat, escapeCsv, escapeHtml,
+  storagePathFromUrl, numericRollCompare, getDseForSlot, normalizeRollNo,
+  credentialsMatch, groupHistoryByDate
+} from './utils/helpers';
 
-const LS_CLASS    = 'bca_class_name';
+import LoginScreen from './components/common/LoginScreen.jsx';
+import EditStudentModal from './components/modals/EditStudentModal.jsx';
+import AboutModal from './components/modals/AboutModal.jsx';
 
-const DEFAULT_CLASS = '2 B.C.A. D';
-const DEFAULT_SUBJECTS = [
-  "Programming in C","C Programming Lab","Digital Logic & Computer Organization",
-  "Discrete Mathematics","Database Management Systems","DBMS Lab","Data Structures",
-  "Operating Systems","Computer Networks","Web Technology","Communicative English",
-  "Statistics","Tamil / Hindi","Value Education"
-];
-const APP_MODULES = [
-  {
-    id: 'attendanceReport', name: 'Attendance Report', sub: 'Record absentees and generate daily reports',
-    defaultAdminOnly: true,
-    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l2.5 2.5L16 8.5"/><rect x="3.5" y="3.5" width="17" height="17" rx="4"/></svg>
-  },
-  {
-    id: 'studentDb', name: 'Student Database', sub: 'View and manage class student list',
-    defaultAdminOnly: true,
-    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-  },
-  {
-    id: 'adminSettings', name: 'Admin Settings', sub: 'Manage timetable, subjects, and settings',
-    defaultAdminOnly: true,
-    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a2 2 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-  },
-  {
-    id: 'studyMaterials', name: 'Study Materials', sub: 'Access class notes, syllabus, and resources',
-    defaultAdminOnly: false,
-    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-  },
-  {
-    id: 'semesterResults', name: 'Semester Results', sub: 'Check internal and external marks',
-    defaultAdminOnly: false,
-    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3 6 6 .9-4.5 4.3 1.1 6-5.6-3-5.6 3 1.1-6L3 8.9 9 8z"/></svg>
-  },
-  {
-    id: 'myAttendance', name: 'My Attendance Report', sub: 'Check your own absence record and attendance %',
-    defaultAdminOnly: false,
-    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
-  }
-];
-const DEFAULT_STUDENT_PERMISSIONS = {
-  studyMaterials: true,
-  semesterResults: true,
-  myAttendance: true,
-  attendanceReport: false,
-  studentDb: false,
-  adminSettings: false
-};
-const DAY_ORDERS = [1,2,3,4,5,6];
-const HOURS = [1,2,3,4,5];
-const PART_ONE_OPTIONS = ["Tamil","French","Hindi","Sanskrit","Telugu"];
-
-/* ===== small helpers ===== */
-function safeParse(json, fallback){
-  try{ const v = JSON.parse(json); return v==null ? fallback : v; }
-  catch(e){ return fallback; }
-}
-function todayISO(){
-  const d = new Date();
-  const off = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - off*60000);
-  return local.toISOString().slice(0,10);
-}
-function formatNiceDate(isoStr){
-  if(!isoStr) return '—';
-  const parts = isoStr.split('-');
-  if(parts.length!==3) return isoStr;
-  const y=parseInt(parts[0],10), m=parseInt(parts[1],10), d=parseInt(parts[2],10);
-  const dt = new Date(y,m-1,d);
-  if(isNaN(dt.getTime())) return isoStr;
-  return d+' '+dt.toLocaleDateString('en-IN',{month:'long'})+' '+y+' ('+dt.toLocaleDateString('en-IN',{weekday:'long'})+')';
-}
-function isValidDobFormat(str){ return /^\d{2}-\d{2}-\d{4}$/.test(str); }
-function maskDobValue(raw){
-  const digits = raw.replace(/\D/g,'').slice(0,8);
-  if(digits.length>4) return digits.slice(0,2)+'-'+digits.slice(2,4)+'-'+digits.slice(4);
-  if(digits.length>2) return digits.slice(0,2)+'-'+digits.slice(2);
-  return digits;
-}
-function escapeCsv(str){
-  const s = String(str==null?'':str);
-  if(/[",\n]/.test(s)) return '"'+s.replace(/"/g,'""')+'"';
-  return s;
-}
-function escapeHtml(str){
-  return String(str==null?'':str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-function storagePathFromUrl(url, bucket){
-  if(!url) return null;
-  const marker = '/object/public/'+bucket+'/';
-  const idx = url.indexOf(marker);
-  if(idx===-1) return null;
-  return url.slice(idx+marker.length);
-}
-/* Strict numeric comparator — parses the leading/trailing digits of a roll
-   number and sorts purely on that integer value (falls back to 0). */
-function numericRollCompare(a, b){
-  const numA = parseInt(String(a).trim(), 10);
-  const numB = parseInt(String(b).trim(), 10);
-  const safeA = isNaN(numA) ? 0 : numA;
-  const safeB = isNaN(numB) ? 0 : numB;
-  return safeA - safeB;
-}
-
-const DSE_SCHEDULE = {
-  '2-4': 'DSE Lab',
-  '2-5': 'DSE Lab',
-  '4-1': 'DSE Theory'
-};
-function getDseForSlot(dayOrder, hour){
-  return DSE_SCHEDULE[String(dayOrder)+'-'+String(hour)] || null;
-}
-
-function languageBadgeFor(student){
-  if(!student) return null;
-  const raw = student.partOne;
-  if(raw == null) return null;
-  const lang = String(raw).trim();
-  if(!lang) return null;
-  if(lang.toLowerCase() === 'tamil') return null;
-  return lang.slice(0, 2).toUpperCase();
-}
-
-/* Normalizes a roll number for comparison purposes: trims whitespace,
-   strips any internal spaces, and lower-cases it. This lets login /
-   lookup logic match roll numbers even if they carry stray whitespace
-   or inconsistent casing coming from Supabase vs. user input. */
-function normalizeRollNo(val){
-  return String(val==null?'':val).trim().replace(/\s+/g,'').toLowerCase();
-}
-
-/* Normalizes a Date-of-Birth value (in almost any common shape) down to a
-   canonical YYYY-MM-DD string so that values coming back from Supabase
-   (which is often an ISO date like "2007-07-08" or a timestamp like
-   "2007-07-08T00:00:00.000Z") can be safely compared against what the
-   user types into the DD-MM-YYYY masked input field. Returns '' if the
-   value can't be confidently parsed, so unrelated strings never falsely
-   match each other. */
-function normalizeDobToISO(val){
-  if(!val) return '';
-  const s = String(val).trim();
-  if(!s) return '';
-
-  // ISO date or timestamp: YYYY-MM-DD(...)
-  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if(m) return m[1]+'-'+m[2]+'-'+m[3];
-
-  // DD-MM-YYYY or DD/MM/YYYY (the format used throughout this app's UI)
-  m = s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
-  if(m) return m[3]+'-'+m[2]+'-'+m[1];
-
-  // DD-MM-YY or DD/MM/YY (2-digit year fallback)
-  m = s.match(/^(\d{2})[-/](\d{2})[-/](\d{2})$/);
-  if(m){
-    const yy = parseInt(m[3],10);
-    const yyyy = yy <= 30 ? 2000+yy : 1900+yy; // reasonable pivot for student DOBs
-    return yyyy+'-'+m[2]+'-'+m[1];
-  }
-
-  return '';
-}
-
-/* True if two roll number / DOB pairs represent the same person, matching
-   flexibly regardless of formatting differences between what's stored in
-   Supabase and what the user typed. */
-function credentialsMatch(storedRoll, storedDob, inputRoll, inputDob){
-  const rollOk = normalizeRollNo(storedRoll) === normalizeRollNo(inputRoll) && normalizeRollNo(inputRoll) !== '';
-  const dobA = normalizeDobToISO(storedDob);
-  const dobB = normalizeDobToISO(inputDob);
-  const dobOk = dobA !== '' && dobB !== '' && dobA === dobB;
-  return rollOk && dobOk;
-}
-
-/* ===== attendance_history helpers (row-per-hour schema) =====
-   Each row in Supabase now represents ONE hour of ONE date:
-   { id, date, hour, subject_name, class_name, absent_rolls[], total_enrolled,
-     total_left, total_active, total_absent, total_present, message, saved_at }
-
-   The UI still needs to show a day at a glance, so we group the flat rows
-   fetched from Supabase into per-date buckets purely for rendering. */
-function groupHistoryByDate(rows){
-  const map = {};
-  rows.forEach(function(row){
-    if(!map[row.date]){
-      map[row.date] = { date: row.date, class_name: row.class_name, total_active: row.total_active, day_order: row.day_order, rows: [] };
-    }
-    map[row.date].rows.push(row);
-    if(row.total_active!=null) map[row.date].total_active = row.total_active;
-    if(row.class_name) map[row.date].class_name = row.class_name;
-    if(row.day_order!=null) map[row.date].day_order = row.day_order;
-  });
-  return Object.keys(map)
-    .map(function(d){ return map[d]; })
-    .sort(function(a,b){
-      if(a.date === b.date) return 0;
-      return a.date > b.date ? -1 : 1;
-    });
-}
-
-const STUDY_TABLE = 'study_materials';
-const STUDY_BUCKET = 'materials';
-
-function LoginScreen({ roll, dob, busy, error, onRollChange, onDobChange, onSubmit, sectionLabel }){
-  const rollInputRef = useRef(null);
-  useEffect(function(){
-    if(rollInputRef.current){
-      rollInputRef.current.focus();
-    }
-  }, []);
-
-  return (
-    <div className="app" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <header className="app-header" style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--panel-border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: 40, height: 40, background: '#10b981', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#022c22', boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <polyline points="9 11 12 14 16 9"></polyline>
-            </svg>
-          </div>
-          <h1 style={{ fontSize: '20px', fontWeight: 800, margin: 0, color: 'var(--text)' }}>BCA App</h1>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--primary)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ width: 6, height: 6, background: 'var(--primary)', borderRadius: '50%' }}></span>
-            {sectionLabel}
-          </div>
-        </div>
-      </header>
-
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-        <div style={{ maxWidth: 540, width: '100%', margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-dim)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>BCA Portal · Unified Login</div>
-            <h2 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--text)', margin: 0 }}>Login to continue</h2>
-          </div>
-
-          <div className="card" style={{ padding: '32px' }}>
-            <p style={{ fontSize: '14px', color: 'var(--text-dim)', margin: '0 0 24px 0' }}>Enter your Roll Number and Date of Birth to securely access your account.</p>
-
-            <div className="stack-fields">
-              <div className="field">
-                <label>Roll Number</label>
-                <input
-                  ref={rollInputRef}
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="e.g. 255113XXX"
-                  autoComplete="off"
-                  value={roll}
-                  onChange={function(e){ onRollChange(e.target.value); }}
-                  onKeyDown={function(e){ if(e.key === 'Enter'){ e.preventDefault(); document.getElementById('unifiedLoginDobInput')?.focus(); } }}
-                  style={{ padding: '14px', fontSize: '15px' }}
-                />
-              </div>
-              <div className="field">
-                <label>Date of Birth</label>
-                <input
-                  id="unifiedLoginDobInput"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="DD-MM-YYYY"
-                  maxLength={10}
-                  autoComplete="off"
-                  value={dob}
-                  onChange={function(e){ onDobChange(maskDobValue(e.target.value)); }}
-                  onKeyDown={function(e){ if(e.key === 'Enter') onSubmit(); }}
-                  style={{ padding: '14px', fontSize: '15px' }}
-                />
-              </div>
-            </div>
-
-            {error && <p className="helper-text" style={{color: 'var(--danger)', marginTop: '16px', textAlign: 'center', fontWeight: 700}}>{error}</p>}
-
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{marginTop: '28px', width: '100%', padding: '14px', fontSize: '16px', fontWeight: 700}}
-              disabled={busy}
-              onClick={onSubmit}
-            >
-              {busy ? 'Verifying…' : 'Login'}
-            </button>
-          </div>
-
-          <div style={{marginTop: '40px', fontSize: '12px', color: 'var(--text-dim)', fontWeight: 600, textAlign: 'center'}}>
-            Created by GODSON S
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+import Home from './pages/Home/Home.jsx';
+import Attendance from './pages/Attendance/Attendance.jsx';
+import Database from './pages/Database/Database.jsx';
+import StudyMaterials from './pages/StudyMaterials/StudyMaterials.jsx';
+import SemesterResults from './pages/SemesterResults/SemesterResults.jsx';
+import AdminSettings from './pages/AdminSettings/AdminSettings.jsx';
+import MyAttendance from './pages/MyAttendance/MyAttendance.jsx';
 
 export default function App(){
-  const LS_USER = 'bca_app_user';
   const [currentUser, setCurrentUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -410,7 +134,7 @@ export default function App(){
     setActiveAdminTab(function(cur){ return cur === tabId ? null : tabId; });
   }
 
-  /* ---------- student db ===== FETCHED LIVE FROM SUPABASE ('students' table) ===== */
+  /* ---------- student db (live from Supabase 'students' table) ---------- */
   const [studentDb, setStudentDb] = useState([]);
   const fetchStudents = useCallback(async function(){
     try {
@@ -553,25 +277,24 @@ export default function App(){
     if(!isValidDobFormat(dob)){ setLoginScreenError('DOB must be DD-MM-YYYY'); return; }
 
     setLoginScreenBusy(true);
-    try{    
+    try{
       // 1. Check admins table first
       const isAdmin = await verifyAdmin(rollNo, dob);
       if(isAdmin){
         const user = { rollNo, role:'admin', name:'Admin' };
         localStorage.setItem(LS_USER, JSON.stringify(user));
         setCurrentUser(user);
-        
-        // FIX: Added await fetchStudents() so history can map names correctly!
-        await fetchStudents(); 
-        await fetchSubjects(); 
-        await fetchAdmins(); 
-        await fetchHistory(); 
-        await fetchTimetable(); 
+
+        await fetchStudents();
+        await fetchSubjects();
+        await fetchAdmins();
+        await fetchHistory();
+        await fetchTimetable();
         await fetchCurrentDayOrder();
-        
+
         setLoginScreenBusy(false);
         return;
-      }    
+      }
       // 2. Fall back to student lookup
       if(studentDb.length===0){ await fetchStudents(); }
       const student = findStudentByCredentials(rollNo, dob);
@@ -663,8 +386,7 @@ export default function App(){
     return { label: '—', isDse: false };
   }
 
-  /* Per-date, per-hour breakdown for one student, using the same DSE and
-     timetable fallback logic as the master report. */
+  /* Per-date, per-hour breakdown for one student (DSE + timetable fallback logic). */
   function getStudentDatewiseHourBreakdown(rollNo){
     const rollQ = normalizeRollNo(rollNo);
     if(!rollQ) return [];
@@ -713,9 +435,6 @@ export default function App(){
   /* ---------- student-specific attendance history search (Admin Dashboard) ---------- */
   const [historySearchRoll, setHistorySearchRoll] = useState('');
 
-  /* Builds a per-date list of which hours a given roll number was absent in,
-     scanning the flat row-per-hour history rows directly. Dates where the
-     student had no absences at all are skipped. */
   function getStudentHistoryRows(rollNo){
     const rollQ = normalizeRollNo(rollNo);
     if(!rollQ) return [];
@@ -734,8 +453,6 @@ export default function App(){
       });
   }
 
-  /* Per-student breakdown for a single date's rows: which hours they were
-     absent in, and whether that adds up to a full-day absence. */
   function getDateAbsenteeBreakdown(dateRows){
     const rollHourMap = {};
     dateRows.forEach(function(row){
@@ -761,9 +478,6 @@ export default function App(){
     return breakdown;
   }
 
-  /* Hour-wise breakdown for a single date's rows: an ordered array (Hour 1 → 5)
-     where each item lists the students absent in that hour (and the subject
-     taught, if recorded), sorted by roll number. */
   function getDateHourWiseBreakdown(dateRows){
     return HOURS.map(function(h){
       const row = dateRows.find(function(r){ return r.hour === h; });
@@ -818,7 +532,7 @@ export default function App(){
     return lines.join('\n');
   }
 
-  /* Attendance % now simply treats every saved row as one conducted hour. */
+  /* Every saved row counts as one conducted hour. */
   function getAttendancePercent(rollNo){
     if(history.length===0) return null;
     const rollQ = normalizeRollNo(rollNo);
@@ -1008,17 +722,8 @@ export default function App(){
     return ok;
   }
 
-  /* Saves attendance as a single clean row keyed by (date, hour) into
-     attendance_history, matching the row-per-hour schema:
-     date, hour, subject_name, class_name, absent_rolls, strength counts,
-     message, saved_at. Uses upsert with onConflict:'date,hour' so that
-     re-submitting the same date+hour combination UPDATES the existing row
-     instead of creating a duplicate. Requires a unique constraint on
-     (date, hour) in Supabase:
-       alter table attendance_history add constraint attendance_history_date_hour_key unique (date, hour);
-     Returns true/false so callers (e.g. the WhatsApp send handler) know
-     whether the save actually succeeded. Does not show its own toast on
-     success — the caller decides how to report the combined outcome. */
+  /* Upserts one row per (date, hour). Requires a unique constraint on (date, hour):
+       alter table attendance_history add constraint attendance_history_date_hour_key unique (date, hour); */
   async function saveAttendanceToHistory(){
     const hour = parseInt(hourVal, 10);
     const absentRolls = summary.absentList.map(function(s){ return s.rollNo; });
@@ -1055,10 +760,7 @@ export default function App(){
     }
   }
 
-  /* Send to Parents Group via WhatsApp: STRICTLY awaits saveAttendanceToHistory()
-     first. WhatsApp is only opened if the Supabase save succeeds — if the save
-     fails, an error toast is shown and WhatsApp never opens, so we never send a
-     report that wasn't actually recorded in history. */
+  /* WhatsApp only opens if the Supabase save succeeds. */
   const [sendBusy, setSendBusy] = useState(false);
   async function handleSend(){
     if(!validateBeforeSend()){ triggerShake('sendBtn'); return; }
@@ -1135,7 +837,6 @@ export default function App(){
   const [studyMaterialFile, setStudyMaterialFile] = useState(null);
   const [studyUploading, setStudyUploading] = useState(false);
 
-  /* ---------- study dashboard accordion state ---------- */
   const [activeStudyTab, setActiveStudyTab] = useState(null);
   function toggleStudyTab(tabId){
     setActiveStudyTab(function(cur){ return cur === tabId ? null : tabId; });
@@ -1488,8 +1189,7 @@ export default function App(){
     showToast('CSV downloaded');
   }
 
-  /* Shared print-window opener: writes printHtml into a popup and triggers
-     the browser print dialog so the admin can "Save as PDF". */
+  /* Opens a popup and triggers the browser print dialog ("Save as PDF"). */
   function openPrintWindow(printHtml){
     const printWindow = window.open('', '_blank', 'width=900,height=700');
     if(!printWindow){
@@ -1506,32 +1206,6 @@ export default function App(){
     return true;
   }
 
-  const PRINT_BASE_STYLE = '*{box-sizing:border-box;}'
-    + 'body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a1a1a;margin:32px;}'
-    + 'h1{font-size:20px;margin:0 0 2px;}'
-    + 'h2{font-size:15px;margin:18px 0 8px;}'
-    + '.meta{font-size:12px;color:#555;margin-bottom:20px;}'
-    + 'table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px;}'
-    + 'th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;}'
-    + 'th{background:#f0f0f0;font-weight:600;}'
-    + 'td.num{text-align:center;}'
-    + '.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-weight:700;font-size:11px;}'
-    + '.pill-present{background:#e3f7ea;color:#1e8449;}'
-    + '.pill-absent{background:#fdeaea;color:#c0392b;}'
-    + '.pill-partial{background:#fff6df;color:#9a6b00;}'
-    + 'tbody tr:nth-child(even){background:#fafafa;}'
-    + '.legend{font-size:11px;color:#555;margin:6px 0 18px;}'
-    + '.legend span{margin-right:14px;}'
-    + '.footer{margin-top:24px;font-size:11px;color:#888;text-align:center;}'
-    + '.student-info{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:18px;}'
-    + '.student-info td{border:1px solid #ccc;padding:6px 8px;}'
-    + '.student-info td.label{background:#f7f7f7;font-weight:600;width:32%;}'
-    + '@media print{body{margin:12mm;}.footer{position:fixed;bottom:8mm;left:0;right:0;}}';
-
-  /* Global attendance-history PDF export: a neat, structured, color-coded
-     table (green = Present-heavy day, red = Full Day Absent count present,
-     amber = partial/hour-specific absences) covering every saved date.
-     Rows are grouped from the flat row-per-hour data first. */
   function handleExportPdf(){
     if(history.length===0){ showToast('No history to export', true); return; }
     const grouped = groupHistoryByDate(history);
@@ -1622,7 +1296,7 @@ export default function App(){
     }
   }
 
-    /* Generates a printable, individual attendance PDF for a single student. */
+  /* Individual attendance PDF for a single student. */
   function exportStudentAttendancePdf(rollNoInput){
     const safeRoll = String(rollNoInput==null?'':rollNoInput).trim();
     if(!safeRoll){ showToast('No Roll Number available to export', true); return; }
@@ -1708,7 +1382,7 @@ export default function App(){
     exportStudentAttendancePdf(safeRoll);
   }
 
-  /* Deletes every hour-row saved for a given date (a whole day's report). */
+  /* Deletes every hour-row saved for a given date. */
   async function handleDeleteHistoryEntry(date){
     try{
       const { error } = await supabase.from('attendance_history').delete().eq('date', date);
@@ -2075,1278 +1749,175 @@ export default function App(){
       </header>
 
       <main>
-        {/* ===== LANDING ===== */}
         {view==='landing' && (
-          <section className="view active">
-            <div className="landing-intro">
-              <h2 className="landing-heading">Welcome, {currentUser.name || currentUser.rollNo || 'Admin'}</h2>
-              <p className="helper-text">{currentUser.role==='admin' ? 'Admin access' : 'Roll No '+currentUser.rollNo}</p>
-            </div>
-            <TimetableWidget currentDayOrder={currentDayOrder} editable={false} onChangeDayOrder={function(d){ setCurrentDayOrder(d); }} timetable={timetable} />
-
-            {(function(){
-              const isAdmin = currentUser.role==='admin';
-              const visibleModules = isAdmin ? APP_MODULES : APP_MODULES.filter(function(m){ return studentPermissions[m.id]===true; });
-              const cardClasses = ['mode-card-primary','mode-card-tertiary','mode-card-secondary','mode-card-quaternary','mode-card-quinary'];
-
-              return visibleModules.map(function(m, idx){
-                return (
-                  <button key={m.id} type="button" className={'mode-card '+cardClasses[idx % cardClasses.length]} onClick={function(){ handleModuleClick(m.id); }}>
-                    <span className="mode-card-icon">{m.icon}</span>
-                    <span className="mode-card-text"><span className="mode-card-title">{m.name}</span><span className="mode-card-sub">{m.sub}</span></span>
-                    <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
-                  </button>
-                );
-              });
-            })()}
-
-            {/* Legacy landing cards replaced by the permission-aware module map.
-            {currentUser.role==='admin' && (
-              <>
-                <button type="button" className="mode-card mode-card-primary" onClick={function(){ setDailyAuthenticated(true); setCurrentAdminRollNo(currentUser.rollNo); navTo('daily'); }}>
-                  <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#04201b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l2.5 2.5L16 8.5"/><rect x="3.5" y="3.5" width="17" height="17" rx="4"/></svg></span>
-                  <span className="mode-card-text"><span className="mode-card-title">Attendance Report</span><span className="mode-card-sub">Record absentees and generate daily reports</span></span>
-                  <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
-                </button>
-
-                <button type="button" className="mode-card mode-card-tertiary" onClick={function(){ navTo('database'); }}>
-                  <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#53bdeb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
-                  <span className="mode-card-text"><span className="mode-card-title">Student Database</span><span className="mode-card-sub">View and manage class student list</span></span>
-                  <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
-                </button>
-
-                <button type="button" className="mode-card mode-card-secondary" onClick={function(){ navTo('adminDashboard'); }}>
-                  <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8696a0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span>
-                  <span className="mode-card-text"><span className="mode-card-title">Admin Settings</span><span className="mode-card-sub">Manage timetable, subjects, and settings</span></span>
-                  <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
-                </button>
-              </>
-            )} */}
-
-            {/* Legacy study materials card replaced by the permission-aware module map.
-            <button type="button" className="mode-card mode-card-quaternary" onClick={function(){ setCurrentStudyRollNo(currentUser.rollNo); setCurrentStudyIsAdmin(currentUser.role==='admin'); refreshStudyView().then(function(){ navTo('studyDashboard'); }); }}>
-              <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ffcc00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
-              <span className="mode-card-text"><span className="mode-card-title">Study Materials</span><span className="mode-card-sub">Access class notes, syllabus, and resources</span></span>
-              <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
-            </button> */}
-
-            {/* Legacy semester results card replaced by the permission-aware module map.
-            <button type="button" className="mode-card mode-card-quinary" onClick={function(){ setCurrentStudyRollNo(currentUser.rollNo); setCurrentStudyIsAdmin(currentUser.role==='admin'); fetchSemesterResults(currentUser.rollNo).then(function(){ navTo('semesterResults'); }); }}>
-              <span className="mode-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#be78ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3 6 6 .9-4.5 4.3 1.1 6-5.6-3-5.6 3 1.1-6L3 8.9 9 8z"/></svg></span>
-              <span className="mode-card-text"><span className="mode-card-title">Semester Results</span><span className="mode-card-sub">Check internal and external marks</span></span>
-              <span className="mode-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
-            </button> */}
-
-            <DisclaimerNote />
-            <button type="button" className="btn btn-secondary" onClick={handleLogout} style={{marginTop:'20px'}}>Logout</button>
-            <p className="app-footer">Created by GODSON S</p>
-          </section>
+          <Home
+            currentUser={currentUser}
+            timetable={timetable}
+            currentDayOrder={currentDayOrder}
+            setCurrentDayOrder={setCurrentDayOrder}
+            studentPermissions={studentPermissions}
+            onModuleClick={handleModuleClick}
+            onLogout={handleLogout}
+          />
         )}
 
-        {/* ===== ATTENDANCE: ADMIN LOGIN ===== */}
-        {view==='dailyLogin' && (
-          <section className="view active">
-            <div className="landing-intro">
-              <p className="landing-eyebrow">Attendance Report</p>
-              <h2 className="landing-heading">Admin Login Required</h2>
-            </div>
-            <div className={"card"+shakeCls('dailyLoginCard')}>
-              <p className="helper-text" style={{marginTop:0}}>This section is restricted to verified Admins. Enter your Admin Roll Number and Date of Birth.</p>
-              <div className="stack-fields">
-                <div className="field"><label>Roll Number</label><input type="text" inputMode="numeric" placeholder="e.g. 255113XXX" autoComplete="off" autoFocus
-                  className={shakeCls('dailyRoll')} value={dailyLoginRoll} onChange={function(e){ setDailyLoginRoll(e.target.value); }} id="dailyLoginRollInput"
-                  onKeyDown={function(e){ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('dailyLoginDobInput')?.focus(); } }} /></div>
-                <div className="field"><label>Date of Birth</label><input type="text" inputMode="numeric" placeholder="DD-MM-YYYY" maxLength={10} autoComplete="off"
-                  className={shakeCls('dailyDob')} value={dailyLoginDob} onChange={function(e){ setDailyLoginDob(maskDobValue(e.target.value)); }} onKeyDown={function(e){ if(e.key==='Enter') attemptDailyLogin(); }} id="dailyLoginDobInput" /></div>
-              </div>
-              <button type="button" className="btn btn-primary" disabled={dailyLoginBusy} onClick={attemptDailyLogin}>Login</button>
-            </div>
-          </section>
-        )}
-
-        {/* ===== ATTENDANCE: MAIN VIEW ===== */}
         {view==='daily' && (
-          <section className="view active">
-            <section className="card">
-              <h2 className="card-title">Configuration</h2>
-              <div className="form-row">
-                <div className="field"><label>Date</label><input type="date" className={shakeCls('dateInput')} value={dateVal} onChange={function(e){ setDateVal(e.target.value); }} /></div>
-                <div className="field"><label>Hour</label>
-                  <select className={shakeCls('hourInput')} value={hourVal} onChange={function(e){ setHourVal(e.target.value); }}>
-                    <option value="">Select hour…</option>
-                    {HOURS.map(function(h){ return <option key={h} value={h}>{h}</option>; })}
-                  </select>
-                </div>
-                <div className="field"><label>Subject / Period</label>
-                  <select className={shakeCls('subjectInput')} value={subjectVal} onChange={function(e){ setSubjectVal(e.target.value); }}>
-                    <option value="" disabled>{subjects.length ? 'Select subject…' : 'No subjects configured — add one in Admin Settings'}</option>
-                    {subjects.map(function(s){ return <option key={s} value={s}>{s}</option>; })}
-                  </select>
-                </div>
-              </div>
-            </section>
-            <section className="card">
-              <div className="card-title-row">
-                <h2 className="card-title">Attendance Grid</h2>
-                <button type="button" className="link-btn" onClick={resetGrid}>Reset all</button>
-              </div>
-              <div className="grid-legend">
-                <span><i className="legend-swatch present"></i>Present</span>
-                <span><i className="legend-swatch absent"></i>Absent</span>
-                <span><i className="legend-swatch left"></i>Left / XX (disabled)</span>
-              </div>
-              <p className="helper-text" style={{marginTop:0}}>Tap a roll number to cycle Present → Absent → Present. Left students and unresolved "XX" entries stay visible but shaded and disabled.</p>
-              <div className="attendance-grid" style={{ display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:8 }}>
-                {(function(){
-                  const isTamilHour = /tamil/i.test(subjectVal || '');
-                  return gridStudents.map(function(s){
-                    const isXX = s.name === 'XX';
-                    const isLeft = leftIds.indexOf(s.id) !== -1;
-                    const isDisabled = isXX || isLeft;
-                    const state = rollState[s.id] || 'present';
-                    const displayNum = (s.rollNo && String(s.rollNo).trim() !== '') ? String(s.rollNo).slice(-2) : '—';
-                    const badge = (isTamilHour && !isDisabled) ? languageBadgeFor(s) : null;
-
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        className={
-                          "roll-btn"
-                          + (isDisabled ? ' state-left' : (state === 'absent' ? ' state-absent' : ''))
-                        }
-                        title={(isXX ? 'Unresolved roll' : s.name) + ' · ' + s.rollNo + (isLeft ? ' (Left)' : '') + (isXX ? ' (XX)' : '') + (badge ? ' · '+s.partOne : '')}
-                        aria-label={(isXX ? 'Unresolved' : s.name) + (isDisabled ? ' — disabled' : ' — ' + state)}
-                        disabled={isDisabled}
-                        onClick={function(){ if(!isDisabled) cycleRollState(s.id); }}>
-                        {displayNum}
-                        {badge && (
-                          <span style={{
-                            position:'absolute', bottom:2, left:0, right:0, textAlign:'center',
-                            fontSize:9, opacity:0.8, fontWeight:700, lineHeight:1, pointerEvents:'none'
-                          }}>
-                            {badge}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  });
-                })()}
-              </div>
-              <div className="stats-strip">
-                <StatBox label="Enrolled" value={summary.totalEnrolled} />
-                <StatBox label="Left/XX" value={summary.totalLeft} cls="left" />
-                <StatBox label="Present" value={summary.totalPresent} cls="present" />
-                <StatBox label="Absent" value={summary.totalAbsent} cls="absent" />
-              </div>
-            </section>
-            <section className="card preview-card">
-              <h2 className="card-title">Live Preview</h2>
-              <div className="chat-bg">
-                <div className="bubble">
-                  <pre>{buildRawMessage()}</pre>
-                  <div className="bubble-meta">
-                    <span>{new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span>
-                    <svg viewBox="0 0 16 11" fill="none"><path d="M1 5.5L4.5 9L11 1.5" stroke="#53bdeb" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M5.5 5.5L9 9L15.5 1.5" stroke="#53bdeb" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  </div>
-                </div>
-              </div>
-            </section>
-            <div className="actions">
-              <button type="button" className={"btn btn-primary"+shakeCls('sendBtn')} disabled={sendBusy} onClick={handleSend}>
-                <svg viewBox="0 0 24 24" fill="#04201b"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.36 5.07L2 22l5.13-1.32A9.93 9.93 0 0012 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm5.2 14.3c-.22.62-1.28 1.18-1.77 1.25-.45.07-1.02.1-1.65-.1-.38-.12-.86-.28-1.48-.55-2.6-1.12-4.3-3.73-4.43-3.9-.13-.17-1.06-1.4-1.06-2.67 0-1.27.66-1.9.9-2.16.22-.24.5-.3.66-.3.17 0 .3 0 .43.01.14.01.33-.05.51.4.2.5.66 1.74.72 1.86.06.13.1.28.02.45-.42.9-.86 1.18-.6 1.6.74 1.2 1.36 1.78 2.4 2.4.18.1.3.08.43-.03.16-.13.65-.68.83-.91.18-.23.35-.18.58-.1.23.08 1.46.7 1.71.83.25.13.42.2.48.31.06.12.06.65-.16 1.27z"/></svg>
-                {sendBusy ? 'Saving…' : 'Send to Parents Group via WhatsApp'}
-              </button>
-              <button type="button" className={"btn btn-secondary"+shakeCls('copyBtn')} onClick={handleCopy}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
-                Copy to Clipboard
-              </button>
-            </div>
-            <p className="app-footer">BCA App</p>
-          </section>
+          <Attendance
+            dateVal={dateVal} setDateVal={setDateVal}
+            hourVal={hourVal} setHourVal={setHourVal}
+            subjectVal={subjectVal} setSubjectVal={setSubjectVal}
+            subjects={subjects}
+            shakeCls={shakeCls}
+            resetGrid={resetGrid}
+            gridStudents={gridStudents}
+            leftIds={leftIds}
+            rollState={rollState}
+            cycleRollState={cycleRollState}
+            summary={summary}
+            buildRawMessage={buildRawMessage}
+            sendBusy={sendBusy}
+            handleSend={handleSend}
+            handleCopy={handleCopy}
+          />
         )}
 
-        {/* ===== DATABASE LOGIN ===== */}
-        {view==='databaseLogin' && (
-          <section className="view active">
-            <div className="landing-intro">
-              <p className="landing-eyebrow">Student Database</p>
-              <h2 className="landing-heading">Login to continue</h2>
-            </div>
-            <div className={"card"+shakeCls('dbLoginCard')}>
-              <p className="helper-text" style={{marginTop:0}}>Enter your Admin Roll Number and Date of Birth.</p>
-              <div className="stack-fields">
-                <div className="field"><label>Roll Number</label><input type="text" inputMode="numeric" placeholder="e.g. 255113XXX" autoComplete="off"
-                  className={shakeCls('dbRoll')} value={dbLoginRoll} onChange={function(e){ setDbLoginRoll(e.target.value); }} /></div>
-                <div className="field"><label>Date of Birth</label><input type="text" inputMode="numeric" placeholder="DD-MM-YYYY" maxLength={10} autoComplete="off"
-                  className={shakeCls('dbDob')} value={dbLoginDob} onChange={function(e){ setDbLoginDob(maskDobValue(e.target.value)); }} onKeyDown={function(e){ if(e.key==='Enter') attemptDbLogin(); }} /></div>
-              </div>
-              <button type="button" className="btn btn-primary" disabled={dbLoginBusy} onClick={attemptDbLogin}>Login</button>
-            </div>
-          </section>
-        )}
-
-        {/* ===== DATABASE MAIN ===== */}
         {view==='database' && (
-          <section className="view active">
-            <div className="landing-intro">
-              <p className="landing-eyebrow">Student Database</p>
-              <h2 className="landing-heading">Search Students</h2>
-            </div>
-            <section className="card">
-              <h2 className="card-title">Search</h2>
-              <div className="form-row">
-                <div className="field"><label>Roll Number</label><input ref={databaseRollInputRef} type="text" inputMode="numeric" placeholder="e.g. 442 or 255113XXX" autoComplete="off" value={searchRoll} onChange={function(e){ setSearchRoll(e.target.value); }} /></div>
-                <div className="field"><label>Mobile Number</label><input type="text" inputMode="numeric" placeholder="e.g. 9488631753" autoComplete="off" value={searchMobile} onChange={function(e){ setSearchMobile(e.target.value); }} /></div>
-              </div>
-            </section>
-            <section className="card">
-              <div className="card-title-row">
-                <h2 className="card-title">Results</h2>
-                <span className="helper-text" style={{margin:0}}>{searchResults ? (searchResults.length+(searchResults.length===1?' match':' matches')) : ''}</span>
-              </div>
-              {!searchResults && <div className="empty-state">Enter a roll number or mobile number above to search.</div>}
-              {searchResults && searchResults.length===0 && <div className="empty-state">No students match that search.</div>}
-              {searchResults && searchResults.map(function(s){
-                const left = leftIds.indexOf(s.id)!==-1;
-                const pct = getAttendancePercent(s.rollNo);
-                return (
-                  <div key={s.id} className={"search-result-card"+(left?' left-status':'')}>
-                    <div className="src-head">
-                      <div>
-                        <div className="src-name">{s.name}</div>
-                        <div className="src-roll">Roll No {s.rollNo}{pct!=null ? ' · '+pct+'% attendance' : ''}</div>
-                      </div>
-                      <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                        {left && <span className="left-badge">Left</span>}
-                        <button type="button" className="edit-student-btn" onClick={function(){ openEditModal(s.id); }}>✏ Edit</button>
-                      </div>
-                    </div>
-                    <div className="src-detail-grid">
-                      <DetailItem label="Student Mobile" value={s.studentMob} tel />
-                      <DetailItem label="Father Mobile" value={s.fatherMob} tel />
-                      <DetailItem label="College ID" value={s.collegeID} mail />
-                      <DetailItem label="Part One Language" value={s.partOne} />
-                      <DetailItem label="Date of Birth" value={s.dob} />
-                    </div>
-                  </div>
-                );
-              })}
-            </section>
-          </section>
+          <Database
+            databaseRollInputRef={databaseRollInputRef}
+            searchRoll={searchRoll} setSearchRoll={setSearchRoll}
+            searchMobile={searchMobile} setSearchMobile={setSearchMobile}
+            searchResults={searchResults}
+            leftIds={leftIds}
+            getAttendancePercent={getAttendancePercent}
+            openEditModal={openEditModal}
+          />
         )}
 
-        {/* ===== STUDY MATERIAL: ROLE SELECT ===== */}
-        {view==='studyRoleSelect' && (
-          <section className="view active">
-            <div className="landing-intro">
-              <p className="landing-eyebrow">Study Material</p>
-              <h2 className="landing-heading">Who are you?</h2>
-            </div>
-            <div className="card">
-              <p className="helper-text" style={{marginTop:0}}>Select your role to continue. Students can browse and preview materials. Admins can upload and manage materials.</p>
-              <div className="actions">
-                <button type="button" className="btn btn-primary" onClick={function(){ goStudyLogin('student'); }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="#04201b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  I am a Student
-                </button>
-                <button type="button" className="btn btn-secondary" onClick={function(){ goStudyLogin('admin'); }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-                  I am an Admin
-                </button>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* ===== SEMESTER RESULTS: ROLE SELECT ===== */}
-        {view==='semesterRoleSelect' && (
-          <section className="view active">
-            <div className="landing-intro">
-              <p className="landing-eyebrow">Semester Results</p>
-              <h2 className="landing-heading">Who are you?</h2>
-            </div>
-            <div className="card">
-              <p className="helper-text" style={{marginTop:0}}>Select your role to continue. Students can view their own marks. Admins can add marks and browse any student's results.</p>
-              <div className="actions">
-                <button type="button" className="btn btn-primary" onClick={function(){ goSemesterLogin('student'); }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="#04201b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  I am a Student
-                </button>
-                <button type="button" className="btn btn-secondary" onClick={function(){ goSemesterLogin('admin'); }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-                  I am an Admin
-                </button>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* ===== STUDY MATERIAL: LOGIN ===== */}
-        {view==='studyLogin' && (
-          <section className="view active">
-            <div className="landing-intro">
-              <p className="landing-eyebrow">Study Material · {studyLoginMode==='admin' ? 'Admin Login' : 'Student Login'}</p>
-              <h2 className="landing-heading">Login to continue</h2>
-            </div>
-            <div className={"card"+shakeCls('studyLoginCard')}>
-              <p className="helper-text" style={{marginTop:0}}>
-                {studyLoginMode==='admin'
-                  ? 'Enter your Admin Roll Number and Date of Birth to access upload controls.'
-                  : 'Enter your Roll Number and Date of Birth to browse study material.'}
-              </p>
-              <div className="stack-fields">
-                <div className="field"><label>Roll Number</label><input type="text" inputMode="numeric" placeholder="e.g. 255113XXX" autoComplete="off" autoFocus
-                  className={shakeCls('studyRoll')} value={studyLoginRoll} onChange={function(e){ setStudyLoginRoll(e.target.value); }}
-                  onKeyDown={function(e){ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('studyLoginDobInput')?.focus(); } }} /></div>
-                <div className="field"><label>Date of Birth</label><input type="text" inputMode="numeric" placeholder="DD-MM-YYYY" maxLength={10} autoComplete="off" id="studyLoginDobInput"
-                  className={shakeCls('studyDob')} value={studyLoginDob} onChange={function(e){ setStudyLoginDob(maskDobValue(e.target.value)); }} onKeyDown={function(e){ if(e.key==='Enter') attemptStudyLogin(); }} /></div>
-              </div>
-              <button type="button" className="btn btn-primary" disabled={studyLoginBusy} onClick={attemptStudyLogin}>
-                {studyLoginBusy ? 'Verifying…' : 'Login'}
-              </button>
-            </div>
-          </section>
-        )}
-
-        {/* ===== SEMESTER RESULTS: LOGIN ===== */}
-        {view==='semesterLogin' && (
-          <section className="view active">
-            <div className="landing-intro">
-              <p className="landing-eyebrow">Semester Results · {studyLoginMode==='admin' ? 'Admin Login' : 'Student Login'}</p>
-              <h2 className="landing-heading">Login to continue</h2>
-            </div>
-            <div className={"card"+shakeCls('semLoginCard')}>
-              <p className="helper-text" style={{marginTop:0}}>
-                {studyLoginMode==='admin'
-                  ? 'Enter your Admin Roll Number and Date of Birth to add and manage results.'
-                  : 'Enter your Roll Number and Date of Birth to view your semester results.'}
-              </p>
-              <div className="stack-fields">
-                <div className="field"><label>Roll Number</label><input type="text" inputMode="numeric" placeholder="e.g. 255113XXX" autoComplete="off" autoFocus
-                  className={shakeCls('semRoll')} value={studyLoginRoll} onChange={function(e){ setStudyLoginRoll(e.target.value); }}
-                  onKeyDown={function(e){ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('semesterLoginDobInput')?.focus(); } }} /></div>
-                <div className="field"><label>Date of Birth</label><input type="text" inputMode="numeric" placeholder="DD-MM-YYYY" maxLength={10} autoComplete="off" id="semesterLoginDobInput"
-                  className={shakeCls('semDob')} value={studyLoginDob} onChange={function(e){ setStudyLoginDob(maskDobValue(e.target.value)); }} onKeyDown={function(e){ if(e.key==='Enter') attemptSemesterLogin(); }} /></div>
-              </div>
-              <button type="button" className="btn btn-primary" disabled={studyLoginBusy} onClick={attemptSemesterLogin}>
-                {studyLoginBusy ? 'Verifying…' : 'Login'}
-              </button>
-            </div>
-          </section>
-        )}
-
-        {/* ===== SEMESTER RESULTS: MAIN VIEW ===== */}
         {view==='semesterResults' && (
-          <section className="view active">
-            <div className="landing-intro">
-              <p className="landing-eyebrow">
-                {currentStudyIsAdmin ? 'Semester Results · Admin Mode' : 'Semester Results · Roll No '+currentStudyRollNo}
-              </p>
-              <h2 className="landing-heading">{currentStudyIsAdmin ? 'Manage Results' : 'Your Results'}</h2>
-            </div>
-
-            {currentStudyIsAdmin && (
-              <section className="card">
-                <h2 className="card-title">Add / Update Marks</h2>
-                <p className="helper-text" style={{marginTop:0}}>Enter the student's Roll Number, semester, subject, and marks to publish results. This will be visible to the student immediately.</p>
-                <div className="stack-fields">
-                  <div className="form-row">
-                    <div className="field"><label>Student Roll Number</label>
-                      <input type="text" inputMode="numeric" placeholder="e.g. 255113XXX" autoComplete="off"
-                        className={shakeCls('semAddRoll')} value={semAddRoll} onChange={function(e){ setSemAddRoll(e.target.value); }} />
-                    </div>
-                    <div className="field"><label>Semester</label>
-                      <input type="text" inputMode="numeric" placeholder="e.g. 1" autoComplete="off"
-                        className={shakeCls('semAddSemester')} value={semAddSemester} onChange={function(e){ setSemAddSemester(e.target.value); }} />
-                    </div>
-                  </div>
-                  <div className="field"><label>Subject Name</label>
-                    <input type="text" placeholder="e.g. Data Structures" autoComplete="off"
-                      className={shakeCls('semAddSubject')} value={semAddSubject} onChange={function(e){ setSemAddSubject(e.target.value); }} />
-                  </div>
-                  <div className="form-row">
-                    <div className="field"><label>Marks Obtained</label>
-                      <input type="text" inputMode="numeric" placeholder="e.g. 78" autoComplete="off"
-                        className={shakeCls('semAddMarks')} value={semAddMarks} onChange={function(e){ setSemAddMarks(e.target.value); }} />
-                    </div>
-                    <div className="field"><label>Max Marks</label>
-                      <input type="text" inputMode="numeric" placeholder="e.g. 100" autoComplete="off"
-                        value={semAddMaxMarks} onChange={function(e){ setSemAddMaxMarks(e.target.value); }} />
-                    </div>
-                  </div>
-                </div>
-                <button type="button" className="btn-add btn-add-block" disabled={semAddBusy} onClick={handleAdminAddMarks}>
-                  {semAddBusy ? 'Saving…' : 'Add Marks Entry'}
-                </button>
-              </section>
-            )}
-
-            {currentStudyIsAdmin && (
-              <section className="card">
-                <h2 className="card-title">Browse Student Results</h2>
-                <p className="helper-text" style={{marginTop:0}}>Enter any Roll Number to load and view that student's results below.</p>
-                <div className="add-row">
-                  <input type="text" inputMode="numeric" placeholder="Enter Roll Number…" autoComplete="off"
-                    className={shakeCls('semBrowseRoll')} value={semBrowseRoll} onChange={function(e){ setSemBrowseRoll(e.target.value); }} />
-                  <button type="button" className="btn-add" onClick={handleAdminBrowseResults}>Load</button>
-                </div>
-              </section>
-            )}
-
-            <section className="card">
-              <div className="semester-select-row">
-                {semesterList.length===0 && <span className="empty-state">No results published yet.</span>}
-                {semesterList.map(function(sem){
-                  return (
-                    <button key={sem} type="button" className={sem===selectedSemester?'btn-add':'btn-add secondary-add'}
-                      onClick={function(){ setSelectedSemester(sem); }}>Semester {sem}</button>
-                  );
-                })}
-              </div>
-              {semesterPercent!=null && (
-                <div className="semester-pct-hero">
-                  <div className="pct-num">{semesterPercent}%</div>
-                  <div className="pct-label">Overall percentage · Semester {selectedSemester}</div>
-                </div>
-              )}
-              {semesterRows.map(function(r){
-                const pct = r.max_marks ? (r.marks/r.max_marks*100) : 0;
-                return (
-                  <div key={r.id} className="result-row">
-                    <span className="result-row-subject">{r.subject_name}</span>
-                    <span className={"result-row-marks"+(pct<40?' low':'')}>{r.marks} / {r.max_marks}</span>
-                    {currentStudyIsAdmin && (
-                      <button type="button" style={{flex:'0 0 auto',minHeight:28,padding:'0 10px',borderRadius:'var(--radius-sm)',fontSize:11,fontWeight:700,cursor:'pointer',border:'1px solid rgba(255,77,77,.35)',background:'rgba(255,77,77,.08)',color:'var(--danger)'}}
-                        onClick={function(){ handleDeleteResultRow(r.id); }}>Delete</button>
-                    )}
-                  </div>
-                );
-              })}
-              {selectedSemester!=null && semesterRows.length===0 && <div className="empty-state">No subjects recorded for this semester.</div>}
-            </section>
-
-            <button type="button" className="btn btn-secondary" onClick={goLanding}>Logout / Back to Home</button>
-          </section>
+          <SemesterResults
+            currentStudyIsAdmin={currentStudyIsAdmin}
+            currentStudyRollNo={currentStudyRollNo}
+            shakeCls={shakeCls}
+            semAddRoll={semAddRoll} setSemAddRoll={setSemAddRoll}
+            semAddSemester={semAddSemester} setSemAddSemester={setSemAddSemester}
+            semAddSubject={semAddSubject} setSemAddSubject={setSemAddSubject}
+            semAddMarks={semAddMarks} setSemAddMarks={setSemAddMarks}
+            semAddMaxMarks={semAddMaxMarks} setSemAddMaxMarks={setSemAddMaxMarks}
+            semAddBusy={semAddBusy}
+            handleAdminAddMarks={handleAdminAddMarks}
+            semBrowseRoll={semBrowseRoll} setSemBrowseRoll={setSemBrowseRoll}
+            handleAdminBrowseResults={handleAdminBrowseResults}
+            semesterList={semesterList}
+            selectedSemester={selectedSemester} setSelectedSemester={setSelectedSemester}
+            semesterPercent={semesterPercent}
+            semesterRows={semesterRows}
+            handleDeleteResultRow={handleDeleteResultRow}
+            goLanding={goLanding}
+          />
         )}
 
-        {/* ===== STUDY MATERIAL: MAIN VIEW ===== */}
         {view==='studyDashboard' && (
-          <section className="view active">
-            <div className="landing-intro">
-              <p className="landing-eyebrow">{currentStudyIsAdmin ? 'Study Material · Admin Mode (Roll No '+currentStudyRollNo+')' : 'Study Material · Roll No '+currentStudyRollNo}</p>
-              <h2 className="landing-heading">{currentStudyIsAdmin ? 'Manage Study Material' : 'Study Material Repository'}</h2>
-            </div>
-
-            {currentStudyIsAdmin && (
-              <AdminAccordionSection
-                id="addSubject"
-                title="Add Subject"
-                subtitle="Create a subject shared live via Supabase — appears instantly in Attendance Report and Study Material for everyone."
-                activeTab={activeStudyTab}
-                onToggle={toggleStudyTab}
-                icon={
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-                    <path d="M9 8h6M9 12h6"/>
-                  </svg>
-                }
-              >
-                <div className="add-row">
-                  <input type="text" placeholder="e.g. Data Structures" autoComplete="off" className={shakeCls('studyNewSubject')}
-                    value={studyNewSubject} onChange={function(e){ setStudyNewSubject(e.target.value); }} />
-                  <button type="button" className="btn-add" onClick={handleAddStudySubject}>Add</button>
-                </div>
-                <div className="manage-list">
-                  {subjects.length===0 && <div className="empty-state">No subjects yet — add one above.</div>}
-                  {subjects.map(function(name){
-                    return (
-                      <div key={name} className="manage-row">
-                        <span className="manage-row-text">{name}</span>
-                        <RemoveBtn label={'Remove subject '+name} onClick={function(){ handleDeleteStudySubject(name); }} />
-                      </div>
-                    );
-                  })}
-                </div>
-              </AdminAccordionSection>
-            )}
-
-            {currentStudyIsAdmin && (
-              <AdminAccordionSection
-                id="upload"
-                title="Upload Material"
-                subtitle="Pick a subject and upload a PDF, PPT, or Doc file directly to Supabase Storage."
-                activeTab={activeStudyTab}
-                onToggle={toggleStudyTab}
-                icon={
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 3v12"/><path d="M7 8l5-5 5 5"/>
-                    <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
-                  </svg>
-                }
-              >
-                <div className="stack-fields">
-                  <div className="field"><label>Subject</label>
-                    <select className={shakeCls('studyMaterialSubject')} value={studyMaterialSubject} onChange={function(e){ setStudyMaterialSubject(e.target.value); }}>
-                      <option value="" disabled>{subjects.length ? 'Select subject…' : 'Add a subject above first'}</option>
-                      {subjects.map(function(s){ return <option key={s} value={s}>{s}</option>; })}
-                    </select>
-                  </div>
-                  <div className="field"><label>Material Title</label>
-                    <input type="text" placeholder="e.g. Unit 3 Notes" autoComplete="off" value={studyMaterialTitle} onChange={function(e){ setStudyMaterialTitle(e.target.value); }} />
-                  </div>
-                  <div className="field"><label>File (PDF / PPT / Doc)</label>
-                    <input type="file" accept=".pdf,.ppt,.pptx,.doc,.docx" className={shakeCls('studyMaterialFile')}
-                      onChange={function(e){ setStudyMaterialFile(e.target.files && e.target.files[0] ? e.target.files[0] : null); }} />
-                  </div>
-                </div>
-                <button type="button" className="btn-add btn-add-block" disabled={studyUploading} onClick={handleUploadMaterial}>
-                  {studyUploading ? 'Uploading…' : 'Upload Material'}
-                </button>
-              </AdminAccordionSection>
-            )}
-
-            <section className="card-title-row" style={{margin:'22px 4px 12px'}}>
-              <h2 className="card-title" style={{margin:0}}>Repository</h2>
-              <span className="helper-text" style={{margin:0}}>{studyCache.filter(function(r){ return r.file_url; }).length} items</span>
-            </section>
-
-            {subjects.length===0 && (
-              <div className="card">
-                <div className="empty-state">
-                  {currentStudyIsAdmin ? 'No subjects yet — add one above to start uploading material.' : 'No study material has been shared yet. Check back soon.'}
-                </div>
-              </div>
-            )}
-
-            {subjects.map(function(subject){
-              const subjectId = subjectIdMap[subject];
-              const materialsForSubject = studyCache.filter(function(m){
-                const relationSubjectName = Array.isArray(m.subjects) ? m.subjects[0]?.subject_name : m.subjects?.subject_name;
-                const rowSubjectId = m.subject_id != null ? Number(m.subject_id) : null;
-                return (subjectId != null && rowSubjectId===Number(subjectId)) || m.subject_name===subject || relationSubjectName===subject;
-              }).filter(function(m){ return m.file_url; });
-
-              return (
-                <StudySubjectAccordion
-                  key={subject}
-                  subject={subject}
-                  fileCount={materialsForSubject.length}
-                  isOpen={expandedRepoSubject === subject}
-                  onToggle={toggleRepoSubject}
-                >
-                  <div className="manage-list" style={{marginTop:0}}>
-                    {materialsForSubject.length===0 && <div className="empty-state">No material uploaded for this subject yet.</div>}
-                    {materialsForSubject.map(function(m){
-                      return (
-                        <div key={m.id} className="manage-row study-material-row">
-                          <span className="manage-row-text">
-                            <a href={m.file_url} target="_blank" rel="noopener noreferrer">📄 {m.file_name}</a>
-                          </span>
-                          {currentStudyIsAdmin && (
-                            <RemoveBtn label={'Delete '+m.file_name} onClick={function(){ handleDeleteMaterial(m); }} />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </StudySubjectAccordion>
-              );
-            })}
-
-            <button type="button" className="btn btn-secondary" onClick={goLanding} style={{marginTop:8}}>Logout / Back to Home</button>
-          </section>
+          <StudyMaterials
+            currentStudyIsAdmin={currentStudyIsAdmin}
+            currentStudyRollNo={currentStudyRollNo}
+            shakeCls={shakeCls}
+            activeStudyTab={activeStudyTab}
+            toggleStudyTab={toggleStudyTab}
+            subjects={subjects}
+            subjectIdMap={subjectIdMap}
+            studyNewSubject={studyNewSubject} setStudyNewSubject={setStudyNewSubject}
+            handleAddStudySubject={handleAddStudySubject}
+            handleDeleteStudySubject={handleDeleteStudySubject}
+            studyMaterialSubject={studyMaterialSubject} setStudyMaterialSubject={setStudyMaterialSubject}
+            studyMaterialTitle={studyMaterialTitle} setStudyMaterialTitle={setStudyMaterialTitle}
+            setStudyMaterialFile={setStudyMaterialFile}
+            studyUploading={studyUploading}
+            handleUploadMaterial={handleUploadMaterial}
+            studyCache={studyCache}
+            expandedRepoSubject={expandedRepoSubject}
+            toggleRepoSubject={toggleRepoSubject}
+            handleDeleteMaterial={handleDeleteMaterial}
+            goLanding={goLanding}
+          />
         )}
 
-        {view==='myAttendance' && (function(){
-          const safeRoll = String(currentUser.rollNo).trim();
-          const rows = getStudentHistoryRows(safeRoll);
-          const pct = getAttendancePercent(safeRoll);
-          return (
-            <section className="view active">
-              <div className="landing-intro">
-                <p className="landing-eyebrow">My Attendance · Roll No {safeRoll}</p>
-                <h2 className="landing-heading">Your Attendance Report</h2>
-              </div>
-
-              {pct!=null && (
-                <div className="semester-pct-hero">
-                  <div className="pct-num">{pct}%</div>
-                  <div className="pct-label">Overall attendance across all saved reports</div>
-                </div>
-              )}
-
-              <section className="card">
-                <div className="card-title-row">
-                  <h2 className="card-title">Absence Record</h2>
-                  <button type="button" className="link-btn" onClick={handleStudentSelfPdfDownload}>Download PDF</button>
-                </div>
-                {rows.length===0 && <div className="empty-state">No absences recorded — great job! Full attendance in all saved reports.</div>}
-                <div style={{display:'grid',gap:10}}>
-                  {rows.map(function(r){
-                    return (
-                      <div key={r.date} style={{border:'1px solid var(--panel-border)',borderRadius:12,background:'var(--panel-soft)',padding:12}}>
-                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom: r.isFullDay ? 0 : 8}}>
-                          <div style={{fontWeight:800,color:'var(--text)',fontSize:13.5}}>{formatNiceDate(r.date)}</div>
-                          <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:999,background: r.isFullDay ? 'rgba(255,77,77,.14)' : 'rgba(255,204,0,.14)',color: r.isFullDay ? 'var(--danger)' : 'var(--warn)',border:'1px solid '+(r.isFullDay ? 'rgba(255,77,77,.3)' : 'rgba(255,204,0,.3)'),whiteSpace:'nowrap'}}>
-                            {r.isFullDay ? 'Full Day (All '+HOURS.length+' Hours)' : r.hoursAbsent.length+' Hour'+(r.hoursAbsent.length===1?'':'s')+' Missed'}
-                          </span>
-                        </div>
-                        {!r.isFullDay && (
-                          <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:2}}>
-                            {r.hoursAbsent.map(function(h){
-                              return <span key={h} style={{display:'inline-flex',alignItems:'center',justifyContent:'center',minWidth:26,height:26,padding:'0 8px',borderRadius:8,background:'rgba(255,77,77,.12)',border:'1px solid rgba(255,77,77,.28)',color:'var(--danger)',fontSize:12,fontWeight:800}}>H{h}</span>;
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-
-              <button type="button" className="btn btn-secondary" onClick={goLanding}>Logout / Back to Home</button>
-            </section>
-          );
-        })()}
-
-        {/* ===== ADMIN SETTINGS: LOGIN ===== */}
-        {view==='adminLogin' && (
-          <section className="view active">
-            <div className="landing-intro">
-              <p className="landing-eyebrow">Admin Settings</p>
-              <h2 className="landing-heading">Login to continue</h2>
-            </div>
-            <div className={"card"+shakeCls('adminLoginCard')}>
-              <p className="helper-text" style={{marginTop:0}}>Enter your Roll Number and Date of Birth.</p>
-              <div className="stack-fields">
-                <div className="field"><label>Roll Number</label><input type="text" inputMode="numeric" placeholder="e.g. 255113XXX" autoComplete="off" autoFocus
-                  className={shakeCls('adminRoll')} value={loginRoll} onChange={function(e){ setLoginRoll(e.target.value); }}
-                  onKeyDown={function(e){ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('adminLoginDobInput')?.focus(); } }} /></div>
-                <div className="field"><label>Date of Birth</label><input type="text" inputMode="numeric" placeholder="DD-MM-YYYY" maxLength={10} autoComplete="off" id="adminLoginDobInput"
-                  className={shakeCls('adminDob')} value={loginDob} onChange={function(e){ setLoginDob(maskDobValue(e.target.value)); }} onKeyDown={function(e){ if(e.key==='Enter') attemptAdminLogin(); }} /></div>
-              </div>
-              <button type="button" className="btn btn-primary" disabled={loginBusy} onClick={attemptAdminLogin}>Login</button>
-            </div>
-            <p className="app-footer">BCA App</p>
-          </section>
+        {view==='myAttendance' && (
+          <MyAttendance
+            currentUser={currentUser}
+            getStudentHistoryRows={getStudentHistoryRows}
+            getAttendancePercent={getAttendancePercent}
+            handleStudentSelfPdfDownload={handleStudentSelfPdfDownload}
+            goLanding={goLanding}
+          />
         )}
 
-        {/* ===== ADMIN SETTINGS: DASHBOARD ===== */}
         {view==='adminDashboard' && (
-          <section className="view active">
-            <div className="landing-intro">
-              <p className="landing-eyebrow">Logged in as Roll No {currentAdminRollNo}</p>
-              <h2 className="landing-heading">Admin Dashboard</h2>
-            </div>
-
-            <AdminAccordionSection
-              id="className"
-              title="Update Class Name"
-              subtitle="This name appears in the preview message and throughout the app."
-              activeTab={activeAdminTab}
-              onToggle={toggleAdminTab}
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-                  <path d="M15 5l4 4"/>
-                </svg>
-              }
-            >
-              <div style={{marginBottom:10}}>
-                <span className="current-class-pill">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                  Current: {className}
-                </span>
-              </div>
-              <div className="class-name-row">
-                <input type="text" placeholder="e.g. 3 B.C.A. D" autoComplete="off" className={shakeCls('className')}
-                  value={classNameInput} onChange={function(e){ setClassNameInput(e.target.value); }} onKeyDown={function(e){ if(e.key==='Enter') saveClassNameHandler(); }} />
-                <button type="button" className="btn-add" onClick={saveClassNameHandler}>Save</button>
-              </div>
-            </AdminAccordionSection>
-
-            <AdminAccordionSection
-              id="dayOrder"
-              title="Today's Day Order"
-              subtitle="Set the active day order and edit the full timetable."
-              activeTab={activeAdminTab}
-              onToggle={toggleAdminTab}
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="4" width="18" height="18" rx="3"/>
-                  <path d="M16 2v4M8 2v4M3 10h18"/>
-                  <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>
-                </svg>
-              }
-            >
-              <TimetableWidget bare timetable={timetable} currentDayOrder={currentDayOrder} onChangeDayOrder={saveCurrentDayOrder} editable={true} subjects={subjects} onSaveSlot={saveTimetableSlot} />
-            </AdminAccordionSection>
-
-            <AdminAccordionSection
-              id="subjects"
-              title="Manage Subjects"
-              subtitle="Subjects live in Supabase — added or removed here, they update instantly in the Attendance Report dropdown and Study Material for every device."
-              activeTab={activeAdminTab}
-              onToggle={toggleAdminTab}
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-                </svg>
-              }
-            >
-              <div className="add-row">
-                <input type="text" placeholder="e.g. Java Programming" autoComplete="off" className={shakeCls('newSubjectInput')}
-                  value={newSubjectInput} onChange={function(e){ setNewSubjectInput(e.target.value); }} />
-                <button type="button" className="btn-add" onClick={handleAddSubjectAdmin}>Add</button>
-              </div>
-              <div className="manage-list">
-                {subjects.length===0 && <div className="empty-state">No subjects yet — add one above.</div>}
-                {subjects.map(function(name){
-                  return (
-                    <div key={name} className="manage-row">
-                      <span className="manage-row-text">{name}</span>
-                      <RemoveBtn label={'Remove '+name} onClick={function(){ deleteSubject(name); }} />
-                    </div>
-                  );
-                })}
-              </div>
-            </AdminAccordionSection>
-
-            <AdminAccordionSection
-              id="students"
-              title="Manage Students"
-              subtitle="Mark students who have left the college. They are hidden from active totals but stay visible (shaded) on the grid."
-              activeTab={activeAdminTab}
-              onToggle={toggleAdminTab}
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                  <circle cx="9" cy="7" r="4"/>
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
-              }
-            >
-              <div className="student-search-wrap">
-                <input type="text" placeholder="Search by name or roll number…" autoComplete="off" value={studentSearchQuery} onChange={function(e){ setStudentSearchQuery(e.target.value); }} />
-              </div>
-              <div className="student-list-scroll">
-                {filteredStudents.length===0 && <div className="empty-state" style={{padding:'10px 4px'}}>No students match your search.</div>}
-                {filteredStudents.map(function(s){
-                  const left = leftIds.indexOf(s.id)!==-1;
-                  return (
-                    <div key={s.id} className={"student-row"+(left?' left-status':'')}>
-                      <div className="student-row-info">
-                        <div className="student-row-name">{s.name==='XX' ? '[No Data] '+s.rollNo : s.name}</div>
-                        <div className="student-row-roll">{s.rollNo}</div>
-                      </div>
-                      {left && <span className="left-badge">Left</span>}
-                      <button type="button" className={"toggle-left-btn "+(left?'restore':'mark')} onClick={function(){ toggleStudentLeft(s.id); }}>
-                        {left ? 'Restore' : 'Mark Left'}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </AdminAccordionSection>
-
-            <AdminAccordionSection
-              id="admins"
-              title="Manage Admins"
-              subtitle="Admins live in Supabase. Add the next class representative so they can take over later — changes apply instantly across all devices."
-              activeTab={activeAdminTab}
-              onToggle={toggleAdminTab}
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>
-                  <path d="M9 12l2 2 4-4"/>
-                </svg>
-              }
-            >
-              <div className="add-row">
-                <input type="text" placeholder="Roll Number" inputMode="numeric" autoComplete="off" className={shakeCls('newAdminRoll')}
-                  value={newAdminRoll} onChange={function(e){ setNewAdminRoll(e.target.value); }} />
-                <input type="text" placeholder="DD-MM-YYYY" inputMode="numeric" maxLength={10} autoComplete="off" className={shakeCls('newAdminDob')}
-                  value={newAdminDob} onChange={function(e){ setNewAdminDob(maskDobValue(e.target.value)); }} />
-              </div>
-              <button type="button" className="btn-add btn-add-block" onClick={handleAddAdmin}>Add Admin</button>
-              <div className="manage-list">
-                {admins.map(function(a){
-                  return (
-                    <div key={a.rollNo} className="manage-row">
-                      <span className="manage-row-text"><strong>{a.rollNo}</strong> <span className="manage-row-sub">· DOB {a.dob}</span></span>
-                      <RemoveBtn label={'Remove admin '+a.rollNo} onClick={function(){ handleDeleteAdmin(a.rollNo); }} />
-                    </div>
-                  );
-                })}
-              </div>
-            </AdminAccordionSection>
-
-            <AdminAccordionSection
-              id="studentLogin"
-              title="Manage Student Login"
-              subtitle="Control exactly which features students can see and access when they log in."
-              activeTab={activeAdminTab}
-              onToggle={toggleAdminTab}
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-                </svg>
-              }
-            >
-              <div className="manage-list">
-                {APP_MODULES.map(function(m){
-                  const enabled = !!studentPermissions[m.id];
-                  return (
-                    <div key={m.id} className="permission-row">
-                      <span className="permission-icon">{m.icon}</span>
-                      <div className="permission-text">
-                        <div className="permission-name">{m.name}</div>
-                        <div className="permission-sub">{m.sub}</div>
-                      </div>
-                      <ToggleSwitch
-                        checked={enabled}
-                        label={'Toggle student access to '+m.name}
-                        onChange={function(val){ updateStudentPermission(m.id, val); }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="warning-box" style={{marginTop:14}}>
-                <strong>Heads up:</strong> Enabling "Attendance Report", "Student Database", or "Admin Settings" grants students access to admin-only tools. Only enable these if you intend that.
-              </div>
-            </AdminAccordionSection>
-
-            <AdminAccordionSection
-              id="history"
-              title="Attendance History"
-              subtitle="Look up a specific student's attendance record across every saved date, export individual or global reports, and manage saved entries."
-              activeTab={activeAdminTab}
-              onToggle={toggleAdminTab}
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 3v5h5"/>
-                  <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
-                  <path d="M12 7v5l4 2"/>
-                </svg>
-              }
-            >
-              <div className="history-search-panel">
-                <div>
-                  <button type="button" className="link-btn" onClick={handleExportPdf}>Export PDF</button>
-                </div>
-
-                <div className="add-row">
-                  <input type="text" inputMode="numeric" placeholder="Enter Roll Number…" autoComplete="off"
-                    className={shakeCls('historySearchRoll')} value={historySearchRoll} onChange={function(e){ setHistorySearchRoll(e.target.value); }} />
-                  <button type="button" className="btn-add" onClick={handleExportStudentPdf}>Export Student PDF</button>
-                </div>
-
-                {historySearchRoll.trim() && (function(){
-                  const rollQ = historySearchRoll.trim();
-                  const student = studentDb.find(function(s){ return normalizeRollNo(s.rollNo)===normalizeRollNo(rollQ); });
-                  if(!student){
-                    return <div className="empty-state">No student found with Roll Number "{rollQ}".</div>;
-                  }
-                  const rows = getStudentHistoryRows(student.rollNo);
-                  const pct = getAttendancePercent(student.rollNo);
-                  return (
-                    <div className="history-breakdown" style={{marginTop:12,borderTop:'1px solid var(--border)',paddingTop:10}}>
-                      <div className="result-row">
-                        <span className="result-row-subject"><strong>{student.name}</strong> · {student.rollNo}</span>
-                        <span className="result-row-marks">{pct!=null ? pct+'% attendance' : 'No data yet'}</span>
-                      </div>
-                      {rows.length===0 && <div className="empty-state">No absences recorded for this student.</div>}
-                      {rows.map(function(r){
-                        return (
-                          <div key={r.date} className="result-row">
-                            <span className="result-row-subject">{formatNiceDate(r.date)}</span>
-                            <span className={"result-row-marks"+(r.isFullDay?' low':'')}>
-                              {r.isFullDay ? 'Full Day Absent' : 'Absent — Hour '+r.hoursAbsent.join(', ')}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </div>
-
-              <p className="helper-text" style={{marginTop:14}}>Each card below groups every hour saved for that date, newest first. Tap a card to see the hour-by-hour absentee breakdown.</p>
-              <div className="history-grid">
-                {groupedHistory.length===0 && <div className="empty-state">No saved reports yet — send an Attendance Report via WhatsApp to create one.</div>}
-                {groupedHistory.map(function(dateEntry){
-                  const isOpen = expandedHistoryDate === dateEntry.date;
-                  const hoursWithAbsentees = dateEntry.rows.filter(function(row){ return (row.absent_rolls||[]).length > 0; }).length;
-                  const hourWiseBreakdown = isOpen ? getDateHourWiseBreakdown(dateEntry.rows) : [];
-                  const allRolls = new Set();
-                  dateEntry.rows.forEach(function(row){ (row.absent_rolls||[]).forEach(function(r){ allRolls.add(r); }); });
-                  const absentCount = allRolls.size;
-                  const presentCount = dateEntry.total_active!=null ? Math.max(dateEntry.total_active-absentCount,0) : null;
-                  const dayOrder = dateEntry.day_order!=null ? dateEntry.day_order : (dateEntry.rows[0] && dateEntry.rows[0].day_order);
-
-                  return (
-                    <div key={dateEntry.date} className={"history-row"+(isOpen?' is-open':'')}>
-                      <div className="history-row-top" style={{cursor:'pointer'}} onClick={function(){ toggleHistoryExpand(dateEntry.date); }}>
-                        <div>
-                          <div className="history-row-title">{formatNiceDate(dateEntry.date)}</div>
-                          <div className="history-row-meta">
-                            {dateEntry.class_name||'—'}
-                            {dayOrder!=null && <span className="day-order-badge">Day Order: {dayOrder}</span>}
-                          </div>
-                          <div className="history-row-meta">{hoursWithAbsentees} of {dateEntry.rows.length} hour(s) with absentees</div>
-                        </div>
-                        <span className="link-btn">{isOpen ? 'Hide' : 'View breakdown'}</span>
-                      </div>
-                      <div className="history-row-stats">
-                        <span><b>{dateEntry.total_active!=null?dateEntry.total_active:'—'}</b> strength</span>
-                        <span><b>{absentCount}</b> absent</span>
-                        <span><b>{presentCount!=null?presentCount:'—'}</b> present</span>
-                      </div>
-                      {isOpen && (
-                        <div className="history-breakdown" style={{marginTop:12,borderTop:'1px solid var(--panel-border)',paddingTop:12}}>
-                          <div style={{display:'grid',gap:10}}>
-                            {hourWiseBreakdown.map(function(hb){
-                              const hourLabel = 'Hour '+hb.hour + (hb.subject ? ' — '+hb.subject : '');
-                              const absentLabel = hb.absentees.length===0 ? 'No absentees recorded' : hb.absentees.length+' absentee'+(hb.absentees.length===1 ? '' : 's');
-                              const hourKey = dateEntry.date+'-'+hb.hour;
-                              const isHourOpen = !!expandedHistoryHours[hourKey];
-                              return (
-                                <div key={hb.hour} style={{border:'1px solid var(--panel-border)',borderRadius:12,background:'var(--panel-soft)',padding:12}}>
-                                  <div
-                                    style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom: hb.hasData ? 8 : 0,cursor: hb.hasData ? 'pointer' : 'default'}}
-                                    onClick={function(){ if(hb.hasData) toggleHistoryHourExpand(hourKey); }}
-                                  >
-                                    <div style={{display:'flex',alignItems:'flex-start',gap:8}}>
-                                      {hb.hasData && (
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"
-                                          strokeLinecap="round" strokeLinejoin="round"
-                                          style={{marginTop:4,flex:'0 0 auto',color:'var(--text-dim)',transition:'transform .18s var(--ease)',transform: isHourOpen ? 'rotate(180deg)' : 'rotate(0deg)'}}>
-                                          <path d="M6 9l6 6 6-6"/>
-                                        </svg>
-                                      )}
-                                      <div>
-                                        <div style={{fontWeight:800,color:'var(--accent)',marginBottom:4}}>{hourLabel}</div>
-                                        <div style={{fontSize:12,color:'var(--text-dim)'}}>{hb.hasData ? absentLabel : 'Hour '+hb.hour+' — Not recorded'}</div>
-                                      </div>
-                                    </div>
-                                    {hb.hasData && (
-                                      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                                        <button type="button" className="hb-action-btn" onClick={function(e){ e.stopPropagation(); handleCopyHistoryMessage(buildHourHistoryMessage(dateEntry, hb.hour)); }}>Copy Message</button>
-                                        <button type="button" className="hb-action-btn danger" onClick={function(e){ e.stopPropagation(); handleDeleteHistoryHourEntry(dateEntry.date, hb.hour); }}>Delete</button>
-                                        <button type="button" className="hb-action-btn" onClick={function(e){ e.stopPropagation(); handleExportHourPdf(dateEntry, hb.hour); }}>Export PDF</button>
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {hb.hasData && isHourOpen ? (
-                                    hb.absentees.length===0 ? (
-                                      <div className="empty-state" style={{margin:0,padding:0,border:'none',background:'transparent'}}>
-                                        No absentees recorded for this hour.
-                                      </div>
-                                    ) : (
-                                      <div style={{display:'grid',gap:6}}>
-                                        {hb.absentees.map(function(a){
-                                          return (
-                                            <div key={a.rollNo} className="result-row" style={{background:'var(--panel)',border:'1px solid var(--panel-border)',borderRadius:10,padding:'8px 10px'}}>
-                                              <span className="result-row-subject">{a.rollNo} - {a.name}</span>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )
-                                  ) : null}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                      <div className="history-actions" style={{display:'flex',gap:'6px',flexWrap:'wrap',marginTop:'8px'}}>
-                        <button type="button" onClick={function(e){ e.stopPropagation(); handleCopyHistoryMessage(buildHistoryMessage(dateEntry)); }}>Copy Message</button>
-                        <button type="button" onClick={function(e){ e.stopPropagation(); handleExportPdfForDate(dateEntry); }}>Master PDF</button>
-                        <button type="button" onClick={function(e){ e.stopPropagation(); handleExportAbsenteesPdfForDate(dateEntry); }}>Absentees PDF</button>
-                        <button type="button" className="danger" onClick={function(e){ e.stopPropagation(); handleDeleteHistoryEntry(dateEntry.date); }}>Delete</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </AdminAccordionSection>
-
-            <button type="button" className="btn btn-secondary" onClick={goLanding}>Logout / Back to Home</button>
-            <p className="app-footer">App Created by: <strong>GODSON S</strong></p>
-          </section>
+          <AdminSettings
+            currentAdminRollNo={currentAdminRollNo}
+            shakeCls={shakeCls}
+            goLanding={goLanding}
+            activeAdminTab={activeAdminTab}
+            toggleAdminTab={toggleAdminTab}
+            className={className}
+            classNameInput={classNameInput} setClassNameInput={setClassNameInput}
+            saveClassNameHandler={saveClassNameHandler}
+            timetable={timetable}
+            currentDayOrder={currentDayOrder}
+            saveCurrentDayOrder={saveCurrentDayOrder}
+            saveTimetableSlot={saveTimetableSlot}
+            subjects={subjects}
+            deleteSubject={deleteSubject}
+            newSubjectInput={newSubjectInput} setNewSubjectInput={setNewSubjectInput}
+            handleAddSubjectAdmin={handleAddSubjectAdmin}
+            studentSearchQuery={studentSearchQuery} setStudentSearchQuery={setStudentSearchQuery}
+            filteredStudents={filteredStudents}
+            leftIds={leftIds}
+            toggleStudentLeft={toggleStudentLeft}
+            admins={admins}
+            newAdminRoll={newAdminRoll} setNewAdminRoll={setNewAdminRoll}
+            newAdminDob={newAdminDob} setNewAdminDob={setNewAdminDob}
+            handleAddAdmin={handleAddAdmin}
+            handleDeleteAdmin={handleDeleteAdmin}
+            studentPermissions={studentPermissions}
+            updateStudentPermission={updateStudentPermission}
+            studentDb={studentDb}
+            historySearchRoll={historySearchRoll} setHistorySearchRoll={setHistorySearchRoll}
+            getStudentHistoryRows={getStudentHistoryRows}
+            getAttendancePercent={getAttendancePercent}
+            groupedHistory={groupedHistory}
+            expandedHistoryDate={expandedHistoryDate}
+            toggleHistoryExpand={toggleHistoryExpand}
+            expandedHistoryHours={expandedHistoryHours}
+            toggleHistoryHourExpand={toggleHistoryHourExpand}
+            getDateHourWiseBreakdown={getDateHourWiseBreakdown}
+            buildHistoryMessage={buildHistoryMessage}
+            buildHourHistoryMessage={buildHourHistoryMessage}
+            handleCopyHistoryMessage={handleCopyHistoryMessage}
+            handleDeleteHistoryEntry={handleDeleteHistoryEntry}
+            handleDeleteHistoryHourEntry={handleDeleteHistoryHourEntry}
+            handleExportPdf={handleExportPdf}
+            handleExportStudentPdf={handleExportStudentPdf}
+            handleExportHourPdf={handleExportHourPdf}
+            handleExportPdfForDate={handleExportPdfForDate}
+            handleExportAbsenteesPdfForDate={handleExportAbsenteesPdfForDate}
+          />
         )}
       </main>
 
-      {/* ===== EDIT STUDENT MODAL ===== */}
-      <div className={"modal-overlay"+(editModalOpen?' open':'')} role="dialog" aria-modal="true" onClick={function(e){ if(e.target===e.currentTarget) closeEditModal(); }}>
-        <div className="modal-sheet">
-          <div className="modal-header">
-            <h2 className="modal-title">Edit Student</h2>
-            <button type="button" className="modal-close" aria-label="Close" onClick={closeEditModal}>&#x2715;</button>
-          </div>
-          <div className="modal-grid">
-            <div className="modal-field" style={{gridColumn:'1/-1'}}>
-              <label>Full Name</label>
-              <input type="text" placeholder="e.g. FIRST LAST" autoComplete="off" className={shakeCls('editName')}
-                value={editForm.name} onChange={function(e){ setEditForm(function(f){ return { ...f, name:e.target.value }; }); }} />
-            </div>
-            <div className="modal-field">
-              <label>Roll Number</label>
-              <input type="text" inputMode="numeric" placeholder="e.g. 255113XXX" autoComplete="off" className={shakeCls('editRollNo')}
-                value={editForm.rollNo} onChange={function(e){ setEditForm(function(f){ return { ...f, rollNo:e.target.value }; }); }} />
-            </div>
-            <div className="modal-field">
-              <label>Date of Birth (DD-MM-YYYY)</label>
-              <input type="text" inputMode="numeric" placeholder="DD-MM-YYYY" maxLength={10} autoComplete="off" className={shakeCls('editDob')}
-                value={editForm.dob} onChange={function(e){ setEditForm(function(f){ return { ...f, dob:maskDobValue(e.target.value) }; }); }} />
-            </div>
-            <div className="modal-field">
-              <label>Student Mobile</label>
-              <input type="text" inputMode="numeric" placeholder="10-digit number" autoComplete="off"
-                value={editForm.studentMob} onChange={function(e){ setEditForm(function(f){ return { ...f, studentMob:e.target.value }; }); }} />
-            </div>
-            <div className="modal-field">
-              <label>Father Mobile</label>
-              <input type="text" inputMode="numeric" placeholder="10-digit number" autoComplete="off"
-                value={editForm.fatherMob} onChange={function(e){ setEditForm(function(f){ return { ...f, fatherMob:e.target.value }; }); }} />
-            </div>
-            <div className="modal-field">
-              <label>College Email ID</label>
-              <input type="text" inputMode="email" placeholder="e.g. ca255113XXX@bhc.edu.in" autoComplete="off"
-                value={editForm.collegeID} onChange={function(e){ setEditForm(function(f){ return { ...f, collegeID:e.target.value }; }); }} />
-            </div>
-            <div className="modal-field">
-              <label>Part One Language</label>
-              <select value={editForm.partOne} onChange={function(e){ setEditForm(function(f){ return { ...f, partOne:e.target.value }; }); }}>
-                {PART_ONE_OPTIONS.map(function(p){ return <option key={p} value={p}>{p}</option>; })}
-              </select>
-            </div>
-          </div>
-          <div className="modal-actions">
-            <button type="button" className="modal-cancel-btn" onClick={closeEditModal}>Cancel</button>
-            <button type="button" className="modal-save-btn" onClick={saveEditModal}>Save Changes</button>
-          </div>
-        </div>
-      </div>
+      <EditStudentModal
+        open={editModalOpen}
+        editForm={editForm}
+        setEditForm={setEditForm}
+        shakeCls={shakeCls}
+        onClose={closeEditModal}
+        onSave={saveEditModal}
+      />
 
-      <div className={"modal-overlay"+(aboutOpen?' open':'')} role="dialog" aria-modal="true" onClick={function(e){ if(e.target===e.currentTarget) setAboutOpen(false); }}>
-        <div className="modal-sheet" style={{maxWidth:420, textAlign:'center', padding:'32px 24px'}}>
-          <div className="modal-header" style={{justifyContent:'center', position:'relative'}}>
-            <h2 className="modal-title">About</h2>
-            <button type="button" className="modal-close" aria-label="Close" onClick={function(){ setAboutOpen(false); }} style={{position:'absolute', right:0}}>&#x2715;</button>
-          </div>
-          <div style={{width:56,height:56,margin:'8px auto 18px',borderRadius:16,background:'linear-gradient(135deg,var(--accent),var(--accent-dark))',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 14px rgba(0,168,132,.35)'}}>
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M9 11l2.5 2.5L16 8.5" stroke="#04201b" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/><rect x="3.5" y="3.5" width="17" height="17" rx="5" stroke="#04201b" strokeWidth="2.2"/></svg>
-          </div>
-          <p style={{fontSize:15,fontWeight:700,color:'var(--text)',margin:'0 0 6px'}}>BCA App</p>
-          <p style={{fontSize:13.5,color:'var(--text-dim)',margin:0,lineHeight:1.6}}>Managed by Class Representative - GODSON S</p>
-        </div>
-      </div>
+      <AboutModal open={aboutOpen} onClose={function(){ setAboutOpen(false); }} />
 
       <div className={"toast"+(toast.show?' show':'')+(toast.error?' error':'')}>
         <span className="tdot"></span><span>{toast.msg}</span>
       </div>
     </div>
-  );
-}
-
-/* =========================================================
-   Sub-components
-   ========================================================= */
-function StatBox(props){
-  return (
-    <div className={"stat-box"+(props.cls?' '+props.cls:'')}>
-      <div className="stat-num">{props.value}</div>
-      <div className="stat-label">{props.label}</div>
-    </div>
-  );
-}
-
-function DetailItem(props){
-  return (
-    <div className="src-detail-item">
-      <div className="src-detail-label">{props.label}</div>
-      <div className="src-detail-value">
-        {props.value
-          ? (props.tel ? <a href={'tel:'+props.value}>{props.value}</a>
-             : props.mail ? <a href={'mailto:'+props.value}>{props.value}</a>
-             : props.value)
-          : <span className="src-detail-empty">—</span>}
-      </div>
-    </div>
-  );
-}
-
-function AdminAccordionSection({ id, title, subtitle, icon, activeTab, onToggle, children }){
-  const isOpen = activeTab === id;
-  return (
-    <section className="card admin-accordion-item">
-      <button
-        type="button"
-        className="admin-accordion-header"
-        onClick={function(){ onToggle(id); }}
-        aria-expanded={isOpen}
-      >
-        {icon && (
-          <span className="admin-accordion-icon" aria-hidden="true">
-            {icon}
-          </span>
-        )}
-        <div className="admin-accordion-header-text">
-          <h2 className="card-title" style={{ margin: 0 }}>{title}</h2>
-          {subtitle && <p className="helper-text" style={{ margin: '4px 0 0' }}>{subtitle}</p>}
-        </div>
-        <svg
-          className="admin-accordion-chevron"
-          width="18" height="18" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
-          style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
-        >
-          <path d="M6 9l6 6 6-6"/>
-        </svg>
-      </button>
-      {isOpen && <div className="admin-accordion-body">{children}</div>}
-    </section>
-  );
-}
-
-function StudySubjectAccordion({ subject, isOpen, onToggle, fileCount, children }){
-  return (
-    <section className="card admin-accordion-item">
-      <button
-        type="button"
-        className="admin-accordion-header"
-        onClick={function(){ onToggle(subject); }}
-        aria-expanded={isOpen}
-      >
-        <span className="admin-accordion-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-          </svg>
-        </span>
-        <div className="admin-accordion-header-text">
-          <h2 className="study-subject-title">{subject}</h2>
-          <p className="helper-text" style={{ margin: '4px 0 0' }}>{fileCount} {fileCount===1?'file':'files'}</p>
-        </div>
-        <svg
-          className="admin-accordion-chevron"
-          width="18" height="18" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
-          style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
-        >
-          <path d="M6 9l6 6 6-6"/>
-        </svg>
-      </button>
-      {isOpen && <div className="admin-accordion-body">{children}</div>}
-    </section>
-  );
-}
-
-function ToggleSwitch({ checked, onChange, label }){
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      className={"ios-toggle"+(checked?' on':'')}
-      onClick={function(){ onChange(!checked); }}
-    >
-      <span className="ios-toggle-thumb"></span>
-    </button>
-  );
-}
-
-function RemoveBtn(props){
-  return (
-    <button type="button" aria-label={props.label} onClick={props.onClick}
-      style={{width:20,height:20,borderRadius:'50%',border:'none',flex:'0 0 auto',background:'rgba(255,255,255,0.08)',color:'var(--text-dim)',cursor:'pointer',fontSize:13,lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center'}}>
-      &#215;
-    </button>
-  );
-}
-
-function DisclaimerNote(){
-  return (
-    <div className="disclaimer-note">
-      <p>
-        <strong>Disclaimer:</strong> This app is managed independently by the Class Representatives (CRs) for reference purposes only. It may contain discrepancies. For official academic attendance and records, please refer to the official college ERP or office portal.
-      </p>
-    </div>
-  );
-}
-
-function TimetableWidget(props){
-  const { timetable, currentDayOrder, onChangeDayOrder, editable, subjects, onSaveSlot, bare } = props;
-  const [showAllDays, setShowAllDays] = useState(false);
-  function slotValue(dayOrder, hour){ return timetable[dayOrder+'-'+hour] || ''; }
-  const Wrapper = bare ? 'div' : 'section';
-  const wrapperClassName = bare ? '' : 'card timetable-card';
-  return (
-    <Wrapper className={wrapperClassName}>
-      {!editable && (
-        <div className="timetable-section" aria-label="Compact timetable view">
-          <div className="timetable-top">
-            <h3>TIMETABLE</h3>
-            <span className="day-badge">Day Order {currentDayOrder}</span>
-          </div>
-          <div className="timetable-grid">
-            {HOURS.map(function(hour){
-              return (
-                <div key={hour} className="hour-box">
-                  <div className="hour-label">HOUR {hour}</div>
-                  <div className="hour-content">{slotValue(currentDayOrder, hour) || '—'}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      {editable && (
-        <>
-          <div className="form-row" style={{marginBottom:12}}>
-            <div className="field">
-              <label>Today's Day Order</label>
-              <select className="timetable-dayorder-select" value={currentDayOrder} onChange={function(e){ onChangeDayOrder(parseInt(e.target.value,10)); }}>
-                {DAY_ORDERS.map(function(d){ return <option key={d} value={d}>Day Order {d}</option>; })}
-              </select>
-            </div>
-          </div>
-          <button type="button" className="link-btn" onClick={function(){ setShowAllDays(function(v){ return !v; }); }}>
-            {showAllDays ? 'Hide day-wise editor' : 'Edit all 6 day orders'}
-          </button>
-          {showAllDays && (
-            <div className="timetable-admin-grid">
-              {DAY_ORDERS.map(function(d){
-                return (
-                  <div key={d} className="timetable-admin-day">
-                    <div className="timetable-admin-day-title">Day Order {d}</div>
-                    {HOURS.map(function(h){
-                      return (
-                        <div key={h} className="timetable-admin-hour-row">
-                          <label>Hour {h}</label>
-                          <select value={slotValue(d,h)} onChange={function(e){ onSaveSlot(d, h, e.target.value); }}>
-                            <option value="">— Free —</option>
-                            {(subjects||[]).map(function(s){ return <option key={s} value={s}>{s}</option>; })}
-                          </select>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
-    </Wrapper>
   );
 }

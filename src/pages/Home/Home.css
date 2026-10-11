@@ -1,0 +1,26 @@
+/* File: src/pages/Home/Home.css */
+
+/* ===== MODE CARDS (landing module buttons) ===== */
+.mode-card{
+  display:flex;align-items:center;gap:14px;width:100%;
+  background:var(--panel);border:1px solid var(--panel-border);
+  border-radius:var(--radius-lg);padding:18px;margin-bottom:14px;
+  cursor:pointer;text-align:left;color:inherit;appearance:none;
+  transition:transform .15s var(--ease),box-shadow .15s var(--ease);
+  box-shadow:var(--shadow-sm);
+}
+.mode-card:hover{box-shadow:var(--shadow-lg);}
+.mode-card:active{transform:scale(.985);}
+.mode-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.mode-card-icon{width:46px;height:46px;border-radius:12px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;}
+.mode-card-primary .mode-card-icon{background:linear-gradient(135deg,var(--accent),var(--accent-dark));}
+.mode-card-secondary .mode-card-icon{background:rgba(255,255,255,.06);}
+.mode-card-tertiary .mode-card-icon{background:rgba(83,189,235,.16);}
+.mode-card-quaternary .mode-card-icon{background:rgba(255,204,0,.16);}
+.mode-card-quinary .mode-card-icon{background:rgba(190,120,255,.16);}
+.mode-card-icon svg{width:22px;height:22px;}
+.mode-card-text{flex:1 1 auto;display:flex;flex-direction:column;gap:2px;min-width:0;}
+.mode-card-title{font-size:15.5px;font-weight:700;color:var(--text);}
+.mode-card-sub{font-size:12.5px;color:var(--text-dim);}
+.mode-card-chevron{flex:0 0 auto;color:var(--text-dim);}
+.mode-card-chevron svg{width:18px;height:18px;}

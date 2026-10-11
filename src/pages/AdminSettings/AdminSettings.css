@@ -1,0 +1,153 @@
+/* File: src/pages/AdminSettings/AdminSettings.css */
+
+/* ===== CLASS NAME ===== */
+.class-name-row{display:flex;gap:8px;align-items:center;}
+.class-name-row input{
+  flex:1 1 auto;background:rgba(255,255,255,.035);border:1px solid var(--panel-border);
+  border-radius:var(--radius-md);color:var(--text);font-size:14.5px;font-family:inherit;
+  padding:12px 13px;min-height:46px;
+  transition:border-color .18s var(--ease),background .18s var(--ease),box-shadow .18s var(--ease);
+}
+.class-name-row input::placeholder{color:#5d6b74;}
+.class-name-row input:focus{outline:none;border-color:var(--accent);background:rgba(0,168,132,.06);box-shadow:0 0 0 3px rgba(0,168,132,.16);}
+.current-class-pill{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(0,168,132,.10);border:1px solid rgba(0,168,132,.28);
+  border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;color:var(--accent);margin-bottom:10px;
+}
+
+/* ===== MANAGE STUDENTS (student list) ===== */
+.student-search-wrap{margin-bottom:12px;}
+.student-search-wrap input{
+  width:100%;background:rgba(255,255,255,.035);border:1px solid var(--panel-border);
+  border-radius:var(--radius-md);color:var(--text);font-size:14px;font-family:inherit;
+  padding:11px 13px;min-height:44px;
+  transition:border-color .18s var(--ease),background .18s var(--ease),box-shadow .18s var(--ease);
+}
+.student-search-wrap input::placeholder{color:#5d6b74;}
+.student-search-wrap input:focus{outline:none;border-color:var(--accent);background:rgba(0,168,132,.06);box-shadow:0 0 0 3px rgba(0,168,132,.16);}
+.student-list-scroll{max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;}
+.student-list-scroll::-webkit-scrollbar{width:4px;}
+.student-list-scroll::-webkit-scrollbar-track{background:transparent;}
+.student-list-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:999px;}
+.student-row{
+  display:flex;align-items:center;gap:10px;
+  background:rgba(255,255,255,.035);border:1px solid var(--panel-border);
+  border-radius:var(--radius-sm);padding:9px 12px;font-size:13px;
+  transition:border-color .18s var(--ease),background .18s var(--ease);
+}
+.student-row.left-status{background:rgba(255,77,77,.06);border-color:rgba(255,77,77,.25);}
+.student-row-id{
+  flex:0 0 auto;width:26px;height:26px;border-radius:8px;
+  background:rgba(255,255,255,.06);color:var(--text-dim);font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+}
+.student-row-info{flex:1 1 auto;min-width:0;}
+.student-row-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.student-row-roll{font-size:11.5px;color:var(--text-dim);}
+.toggle-left-btn{
+  flex:0 0 auto;min-height:32px;padding:0 12px;border-radius:var(--radius-sm);
+  font-size:12px;font-weight:700;cursor:pointer;border:1px solid;
+  transition:background .15s var(--ease),color .15s var(--ease),border-color .15s var(--ease);
+}
+.toggle-left-btn.mark{background:rgba(255,77,77,.10);border-color:rgba(255,77,77,.35);color:var(--danger);}
+.toggle-left-btn.mark:hover{background:rgba(255,77,77,.22);}
+.toggle-left-btn.restore{background:rgba(93, 150, 138, 0.1);border-color:rgba(0,168,132,.35);color:var(--accent);}
+.toggle-left-btn.restore:hover{background:rgba(0,168,132,.22);}
+
+/* ===== ATTENDANCE HISTORY ===== */
+.history-search-panel{
+  position:sticky;top:0;z-index:5;
+  background:var(--panel);
+  border:1px solid var(--panel-border);
+  border-radius:var(--radius-md);
+  padding:12px;
+  margin-bottom:14px;
+  display:flex;flex-direction:column;gap:10px;
+}
+.history-grid{
+  display:grid !important;
+  grid-template-columns:1fr;
+  gap:12px;
+  width:100%;
+}
+@media(min-width:640px){
+  .history-grid{grid-template-columns:repeat(2,1fr);}
+}
+@media(min-width:1000px){
+  .history-grid{grid-template-columns:repeat(3,1fr);}
+}
+.history-grid .history-row{
+  margin-bottom:0;
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+}
+.history-grid .history-row.is-open{
+  grid-column:1 / -1;
+}
+.day-order-badge{
+  display:inline-block;
+  margin-left:8px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--accent);
+  background:rgba(0,168,132,.12);
+  border:1px solid rgba(0,168,132,.3);
+  border-radius:999px;
+  padding:2px 8px;
+}
+.history-row{background:var(--panel);border:1px solid var(--panel-border);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;box-shadow:none;}
+.history-row-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+.history-row-title{font-size:13.5px;font-weight:700;}
+.history-row-meta{font-size:11.5px;color:var(--text-dim);margin-top:2px;}
+.history-row-stats{display:flex;gap:10px;margin-top:8px;font-size:11.5px;color:var(--text-dim);flex-wrap:wrap;}
+.history-row-stats b{color:var(--text);}
+.history-actions{display:flex;gap:8px;margin-top:10px;}
+.history-actions button{
+  flex:0 0 auto;min-height:32px;padding:0 12px;border-radius:var(--radius-sm);
+  font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--panel-border);
+  background:rgba(255,255,255,.04);color:var(--text);transition:background .15s var(--ease);
+}
+.history-actions button:hover{background:rgba(255,255,255,.09);}
+.history-actions button.danger{color:var(--danger);border-color:rgba(255,77,77,.35);background:rgba(255,77,77,.08);}
+.history-actions button.danger:hover{background:rgba(255,77,77,.18);}
+.hb-action-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--panel-border);
+  background: rgba(255,255,255,.04);
+  color: var(--text);
+  transition: background .15s var(--ease);
+}
+.hb-action-btn:hover {
+  background: rgba(255,255,255,.09);
+}
+.hb-action-btn.danger {
+  color: var(--danger);
+  border-color: rgba(255,77,77,.35);
+  background: rgba(255,77,77,.08);
+}
+.hb-action-btn.danger:hover {
+  background: rgba(255,77,77,.18);
+}
+
+/* ===== MANAGE STUDENT LOGIN (permissions) ===== */
+.permission-row{
+  display:flex;align-items:center;gap:12px;
+  background:rgba(255,255,255,.035);border:1px solid var(--panel-border);
+  border-radius:var(--radius-sm);padding:10px 12px;
+}
+.permission-icon{
+  flex:0 0 auto;width:34px;height:34px;border-radius:10px;
+  background:rgba(0,168,132,.1);border:1px solid rgba(0,168,132,.2);
+  color:var(--accent);display:flex;align-items:center;justify-content:center;
+}
+.permission-icon svg{width:18px;height:18px;}
+.permission-text{flex:1 1 auto;min-width:0;}
+.permission-name{font-size:13.5px;font-weight:700;color:var(--text);}
+.permission-sub{font-size:11.5px;color:var(--text-dim);margin-top:1px;}

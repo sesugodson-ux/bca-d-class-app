@@ -1,0 +1,7 @@
+/* File: src/pages/SemesterResults/SemesterResults.css */
+
+/* ===== SEMESTER RESULTS ===== */
+.semester-select-row{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
+
+/* .semester-pct-hero and .result-row* are shared with MyAttendance and
+   AdminSettings, so they live in src/global.css. */

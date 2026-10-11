@@ -1,0 +1,62 @@
+/* File: src/components/modals/Modals.css */
+
+/* ===== MODALS (EditStudentModal + AboutModal) ===== */
+.modal-overlay{
+  position:fixed;inset:0;z-index:60;
+  background:rgba(0,0,0,.65);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  display:flex;align-items:flex-end;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity .22s var(--ease);
+}
+.modal-overlay.open{opacity:1;pointer-events:auto;}
+.modal-sheet{
+  width:100%;max-width:640px;max-height:90dvh;overflow-y:auto;
+  background:var(--panel-soft);border:1px solid var(--panel-border);
+  border-radius:var(--radius-lg) var(--radius-lg) 0 0;
+  padding:22px 20px 36px;
+  transform:translateY(24px);transition:transform .25s var(--ease);
+}
+.modal-overlay.open .modal-sheet{transform:translateY(0);}
+.modal-sheet::-webkit-scrollbar{width:4px;}
+.modal-sheet::-webkit-scrollbar-track{background:transparent;}
+.modal-sheet::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:999px;}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+.modal-title{font-size:16px;font-weight:700;margin:0;}
+.modal-close{
+  width:32px;height:32px;border-radius:50%;border:1px solid var(--panel-border);
+  background:rgba(255,255,255,.05);color:var(--text-dim);cursor:pointer;font-size:16px;
+  display:flex;align-items:center;justify-content:center;transition:background .15s var(--ease);
+}
+.modal-close:hover{background:rgba(255,255,255,.12);}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;}
+@media(max-width:420px){.modal-grid{grid-template-columns:1fr;}}
+.modal-field{display:flex;flex-direction:column;gap:6px;}
+.modal-field label{font-size:12px;color:var(--text-dim);font-weight:600;}
+.modal-field input,.modal-field select{
+  width:100%;background:rgba(255,255,255,.04);border:1px solid var(--panel-border);
+  border-radius:var(--radius-sm);color:var(--text);font-size:14px;font-family:inherit;
+  padding:10px 12px;min-height:44px;
+  transition:border-color .18s var(--ease),background .18s var(--ease),box-shadow .18s var(--ease);
+}
+.modal-field input:focus,.modal-field select:focus{
+  outline:none;border-color:var(--accent);background:rgba(0, 168, 132, 0);
+  box-shadow:0 0 0 3px rgba(0,168,132,.16);
+}
+.modal-field select{
+  appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238696a0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;
+}
+.modal-field select option{background:var(--panel);color:var(--text);}
+.modal-actions{display:flex;gap:10px;}
+.modal-save-btn{
+  flex:1 1 auto;min-height:48px;border:none;border-radius:var(--radius-md);
+  background:linear-gradient(135deg,var(--accent),var(--accent-dark));color:#04201b;
+  font-size:15px;font-weight:700;cursor:pointer;transition:filter .18s var(--ease);
+}
+.modal-save-btn:hover{filter:brightness(1.07);}
+.modal-cancel-btn{
+  min-height:48px;padding:0 20px;border:1px solid var(--panel-border);border-radius:var(--radius-md);
+  background:rgba(255,255,255,.04);color:var(--text);
+  font-size:15px;font-weight:700;cursor:pointer;transition:background .15s var(--ease);
+}
+.modal-cancel-btn:hover{background:rgba(255,255,255,.09);}

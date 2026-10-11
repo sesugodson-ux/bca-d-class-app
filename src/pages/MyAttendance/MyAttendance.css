@@ -1,0 +1,6 @@
+/* File: src/pages/MyAttendance/MyAttendance.css */
+
+/* MyAttendance has no page-specific class rules: its layout uses inline styles,
+   and the shared classes it relies on (.semester-pct-hero, .card, .link-btn,
+   .empty-state, .btn) live in src/global.css.
+   Add MyAttendance-only styles here if you ever extract the inline styles. */
